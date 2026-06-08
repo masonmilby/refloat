@@ -53,7 +53,11 @@
     S(imu.roll, "roll")                                                                            \
     S(footpad.adc_left, "adc_left")                                                                \
     S(footpad.adc_right, "adc_right")                                                              \
-    S(remote.input, "remote.input")
+    S(remote.input, "remote.input")                                                                \
+    S(agr.quality, "agr.quality")                                                                  \
+    S(agr.fade, "agr.fade")                                                                        \
+    S(agr.surface_angle, "agr.surface_angle")                                                      \
+    R(agr.grade, "agr.grade")
 
 #define RT_DATA_RUNTIME_ITEMS(S, R)                                                                \
     R(setpoint, "setpoint")                                                                        \
@@ -66,7 +70,8 @@
     S(atr.accel_diff, "atr.accel_diff")                                                            \
     S(atr.speed_boost, "atr.speed_boost")                                                          \
     R(atr.transition_boost, "atr.transition_boost")                                                \
-    S(booster.torque.value, "booster.torque")
+    S(booster.torque.value, "booster.torque")                                                      \
+    R(agr.setpoint, "agr.setpoint")
 
 #define RT_DATA_ALL_ITEMS(S, R) RT_DATA_ITEMS(S, R) RT_DATA_RUNTIME_ITEMS(S, R)
 

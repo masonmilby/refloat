@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include "agr.h"
 #include "alert_tracker.h"
 #include "atr.h"
 #include "bms.h"
@@ -64,6 +65,7 @@ typedef struct {
 
     TorqueTilt torque_tilt;
     ATR atr;
+    AGR agr;
     BrakeTilt brake_tilt;
     TurnTilt turn_tilt;
     Booster booster;
@@ -127,4 +129,8 @@ typedef struct {
     float softstart_pid_limit;
 
     uint64_t odometer;
+
+    // Feature: AGR mount calibration (agr_cal terminal command)
+    int agr_cal_remaining;
+    float agr_cal_accum;
 } Data;

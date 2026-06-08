@@ -21,6 +21,7 @@
 
 #include "vesc_c_if.h"
 
+#include "agr.h"
 #include "atr.h"
 #include "bms.h"
 #include "booster.h"
@@ -96,6 +97,9 @@ static const FootpadSensorState headlights_off_konami_sequence[] = {
 
 static void flywheel_stop(Data *d);
 static void cmd_flywheel_toggle(Data *d, unsigned char *cfg, int len);
+static void agr_cal_tick(Data *d);
+static void terminal_agr_sim(int argc, const char **argv);
+static void terminal_agr_cal(int argc, const char **argv);
 
 const VESC_PIN beeper_pin = VESC_PIN_PPM;
 
@@ -158,6 +162,7 @@ static void main_freq_update_reconfigure(float frequency) {
     torque_tilt_configure(&d->torque_tilt, &d->float_conf, frequency);
     atr_configure(&d->atr, &d->float_conf, frequency);
     brake_tilt_configure(&d->brake_tilt, &d->float_conf, frequency);
+    agr_configure(&d->agr, &d->float_conf, frequency);
     turn_tilt_configure(&d->turn_tilt, &d->float_conf, frequency);
     remote_configure(&d->remote, &d->float_conf, frequency);
 
@@ -240,6 +245,7 @@ static void reset_runtime_vars(Data *d) {
 
     torque_tilt_reset(&d->torque_tilt);
     atr_reset(&d->atr);
+    agr_reset(&d->agr);
     brake_tilt_reset(&d->brake_tilt);
     turn_tilt_reset(&d->turn_tilt);
     remote_reset(&d->remote, &d->time);
@@ -761,6 +767,15 @@ static void imu_ref_callback(float *acc, float *gyro, float *mag, float dt) {
     data_recorder_sample(&d->data_record, d, time);
 }
 
+// sign-matched aggregation: same sign keeps the larger magnitude (no
+// double-tilt when sources agree), opposite signs add; (a, 0) is a no-op
+static float combine_signed_offset(float a, float b) {
+    if (sign(a) == sign(b)) {
+        return sign(a) * fmaxf(fabsf(a), fabsf(b));
+    }
+    return a + b;
+}
+
 static void refloat_thd(void *arg) {
     Data *d = (Data *) arg;
 
@@ -781,6 +796,8 @@ static void refloat_thd(void *arg) {
         time_update(&d->time, d->state.state);
 
         beeper_update(d);
+
+        agr_cal_tick(d);
 
         charging_timeout(&d->charging, &d->state);
 
@@ -917,6 +934,12 @@ static void refloat_thd(void *arg) {
                 );
                 turn_tilt_update(&d->turn_tilt, &d->motor, &d->float_conf, d->state.wheelslip, dt);
 
+                if (d->state.wheelslip) {
+                    agr_winddown(&d->agr);
+                } else {
+                    agr_update(&d->agr, &d->motor, &d->imu, &d->time, &d->float_conf, dt);
+                }
+
                 d->setpoint += d->noseangling_interpolated;
                 d->setpoint += d->turn_tilt.setpoint.value;
 
@@ -924,16 +947,19 @@ static void refloat_thd(void *arg) {
                 // if signs match between torque tilt and ATR + brake tilt, use the more significant
                 // one if signs do not match, they are simply added together
                 float ab_offset = d->atr.setpoint.value + d->brake_tilt.setpoint.value;
-                if (sign(ab_offset) == sign(d->torque_tilt.setpoint.value)) {
-                    d->setpoint += sign(ab_offset) *
-                        fmaxf(fabsf(ab_offset), fabsf(d->torque_tilt.setpoint.value));
-                } else {
-                    d->setpoint += ab_offset + d->torque_tilt.setpoint.value;
-                }
+                float terrain_offset =
+                    combine_signed_offset(ab_offset, d->torque_tilt.setpoint.value);
+
+                // AGR joins the same aggregation; a no-op when agr.setpoint == 0,
+                // so the default config (AGR strengths 0) changes nothing
+                d->setpoint += combine_signed_offset(terrain_offset, d->agr.setpoint);
             }
 
             break;
         case (STATE_READY):
+            // run AGR in READY too so trust/fade/telemetry stay live; its
+            // setpoint is only consumed in RUNNING and is reset on engage
+            agr_update(&d->agr, &d->motor, &d->imu, &d->time, &d->float_conf, dt);
             if (d->state.mode == MODE_FLYWHEEL) {
                 if (d->flywheel_abort || d->footpad.state != FS_NONE) {
                     flywheel_stop(d);
@@ -1197,6 +1223,7 @@ static void data_init(Data *d) {
 
     torque_tilt_init(&d->torque_tilt);
     atr_init(&d->atr);
+    agr_init(&d->agr);
     brake_tilt_init(&d->brake_tilt);
     turn_tilt_init(&d->turn_tilt);
     booster_init(&d->booster);
@@ -1235,6 +1262,9 @@ static void data_init(Data *d) {
     d->beep_num_left = 0;
     d->beep_duration = 0.0f;
     d->beeper_timer = 0;
+
+    d->agr_cal_remaining = 0;
+    d->agr_cal_accum = 0.0f;
 
     configure(d);
 }
@@ -1444,6 +1474,8 @@ static void cmd_handtest(Data *d, unsigned char *cfg) {
         d->float_conf.torquetilt_strength_regen = 0;
         d->float_conf.atr_strength_up = 0;
         d->float_conf.atr_strength_down = 0;
+        d->float_conf.agr_strength_up = 0;
+        d->float_conf.agr_strength_down = 0;
         d->float_conf.turntilt_strength = 0;
         d->float_conf.tiltback_constant = 0;
         d->float_conf.tiltback_variable = 0;
@@ -1657,6 +1689,17 @@ static void cmd_tune_defaults(Data *d) {
     d->float_conf.atr_amps_decel_ratio = CFG_DFLT_ATR_AMPS_DECEL_RATIO;
     d->float_conf.braketilt_strength = CFG_DFLT_BRAKETILT_STRENGTH;
     d->float_conf.braketilt_lingering = CFG_DFLT_BRAKETILT_LINGERING;
+    d->float_conf.agr_strength_up = CFG_DFLT_AGR_STRENGTH_UP;
+    d->float_conf.agr_strength_down = CFG_DFLT_AGR_STRENGTH_DOWN;
+    d->float_conf.agr_angle_limit = CFG_DFLT_AGR_ANGLE_LIMIT;
+    d->float_conf.agr_taper_erpm = CFG_DFLT_AGR_TAPER_ERPM;
+    d->float_conf.agr_can_id = CFG_DFLT_AGR_CAN_ID;
+    d->float_conf.agr_mount_offset = CFG_DFLT_AGR_MOUNT_OFFSET;
+    d->float_conf.agr_quality_on = CFG_DFLT_AGR_QUALITY_ON;
+    d->float_conf.agr_quality_off = CFG_DFLT_AGR_QUALITY_OFF;
+    d->float_conf.agr_fade_rate = CFG_DFLT_AGR_FADE_RATE;
+    d->float_conf.agr_filter = CFG_DFLT_AGR_FILTER;
+    d->float_conf.agr_rate_limit = CFG_DFLT_AGR_RATE_LIMIT;
 
     d->float_conf.startup_pitch_tolerance = CFG_DFLT_STARTUP_PITCH_TOLERANCE;
     d->float_conf.startup_roll_tolerance = CFG_DFLT_STARTUP_ROLL_TOLERANCE;
@@ -1887,6 +1930,8 @@ static void cmd_flywheel_toggle(Data *d, unsigned char *cfg, int len) {
     d->float_conf.torquetilt_strength_regen = 0;
     d->float_conf.atr_strength_up = 0;
     d->float_conf.atr_strength_down = 0;
+    d->float_conf.agr_strength_up = 0;
+    d->float_conf.agr_strength_down = 0;
     d->float_conf.turntilt_strength = 0;
     d->float_conf.tiltback_constant = 0;
     d->float_conf.tiltback_variable = 0;
@@ -2650,6 +2695,9 @@ static void stop(void *arg) {
     Data *d = (Data *) arg;
     VESC_IF->imu_set_read_callback(NULL);
     VESC_IF->set_app_data_handler(NULL);
+    VESC_IF->can_set_sid_cb(NULL);
+    VESC_IF->terminal_unregister_callback(terminal_agr_sim);
+    VESC_IF->terminal_unregister_callback(terminal_agr_cal);
     VESC_IF->conf_custom_clear_configs();
     if (d->aux_thread) {
         VESC_IF->request_terminate(d->aux_thread);
@@ -2661,6 +2709,114 @@ static void stop(void *arg) {
     motor_data_destroy(&d->motor);
     leds_destroy(&d->leds);
     VESC_IF->free(d);
+}
+
+static bool can_sid_callback(uint32_t id, uint8_t *data, uint8_t len) {
+    Data *d = (Data *) ARG;
+    if (id == d->float_conf.agr_can_id) {
+        return agr_handle_can_frame(&d->agr, data, len);
+    }
+    return false;
+}
+
+#define AGR_CAL_SAMPLES (2 * MAIN_THREAD_FREQ)  // ~2 s at the main loop rate
+
+// Hand-rolled: strtof drags in newlib's strtod (~10 KB + heap/syscall stubs)
+// which overflows this freestanding package's MEM region.
+static float agr_parse_float(const char *s) {
+    if (!s) {
+        return 0.0f;
+    }
+    while (*s == ' ' || *s == '\t') {
+        s++;
+    }
+    float sign = 1.0f;
+    if (*s == '-') {
+        sign = -1.0f;
+        s++;
+    } else if (*s == '+') {
+        s++;
+    }
+    float value = 0.0f;
+    while (*s >= '0' && *s <= '9') {
+        value = value * 10.0f + (float) (*s - '0');
+        s++;
+    }
+    if (*s == '.') {
+        s++;
+        float scale = 0.1f;
+        while (*s >= '0' && *s <= '9') {
+            value += (float) (*s - '0') * scale;
+            scale *= 0.1f;
+            s++;
+        }
+    }
+    return sign * value;
+}
+
+static void terminal_agr_sim(int argc, const char **argv) {
+    Data *d = (Data *) ARG;
+    if (argc == 2 && strcmp(argv[1], "off") == 0) {
+        d->agr.sim_active = false;
+        VESC_IF->printf("AGR sim: off (real CAN input resumes)\n");
+        return;
+    }
+    if (argc < 3) {
+        VESC_IF->printf("Usage: agr_sim <angle_deg> <quality_0_to_1> | agr_sim off\n");
+        return;
+    }
+    d->agr.sim_surface_angle = agr_parse_float(argv[1]);
+    d->agr.sim_quality = clampf(agr_parse_float(argv[2]), 0.0f, 1.0f);
+    d->agr.sim_active = true;
+    VESC_IF->printf(
+        "AGR sim: angle=%.2f deg quality=%.2f\n",
+        (double) d->agr.sim_surface_angle,
+        (double) d->agr.sim_quality
+    );
+}
+
+static void terminal_agr_cal(int argc, const char **argv) {
+    unused(argc);
+    unused(argv);
+    Data *d = (Data *) ARG;
+    if (!d->agr.trusted) {
+        VESC_IF->printf(
+            "AGR cal: refused -- sensor not trusted (quality %.2f). Flat ground, live sensor.\n",
+            (double) d->agr.quality
+        );
+        return;
+    }
+    if (d->motor.abs_erpm > 100) {
+        VESC_IF->printf("AGR cal: refused -- board must be stationary (erpm %.0f).\n", (double) d->motor.abs_erpm);
+        return;
+    }
+    d->agr_cal_accum = 0.0f;
+    d->agr_cal_remaining = AGR_CAL_SAMPLES;
+    VESC_IF->printf("AGR cal: sampling %d frames (~2 s), keep the ground flat...\n", AGR_CAL_SAMPLES);
+}
+
+// Called every main-loop tick; accumulates surface_angle + pitch while a
+// calibration is armed, then writes the negated mean into agr_mount_offset.
+static void agr_cal_tick(Data *d) {
+    if (d->agr_cal_remaining <= 0) {
+        return;
+    }
+    if (!d->agr.trusted) {
+        d->agr_cal_remaining = 0;
+        log_msg("AGR cal: aborted -- sensor lost trust mid-sample.");
+        return;
+    }
+    d->agr_cal_accum += d->agr.surface_angle + d->imu.pitch;
+    if (--d->agr_cal_remaining == 0) {
+        float old = d->float_conf.agr_mount_offset;
+        d->float_conf.agr_mount_offset = -d->agr_cal_accum / AGR_CAL_SAMPLES;
+        write_cfg_to_eeprom(d);
+        log_msg(
+            "AGR cal: mount offset %.2f -> %.2f deg (saved).",
+            (double) old,
+            (double) d->float_conf.agr_mount_offset
+        );
+    }
 }
 
 INIT_FUN(lib_info *info) {
@@ -2703,6 +2859,13 @@ INIT_FUN(lib_info *info) {
     VESC_IF->imu_set_read_callback(imu_ref_callback);
     VESC_IF->conf_custom_add_config(get_cfg, set_cfg, get_cfg_xml);
     VESC_IF->set_app_data_handler(on_command_received);
+    VESC_IF->can_set_sid_cb(can_sid_callback);
+    VESC_IF->terminal_register_command_callback(
+        "agr_sim", "Simulate AGR sensor frames (bench tool)", "[angle_deg quality]|[off]", terminal_agr_sim
+    );
+    VESC_IF->terminal_register_command_callback(
+        "agr_cal", "Calibrate AGR mount offset on flat ground", NULL, terminal_agr_cal
+    );
     VESC_IF->lbm_add_extension("ext-set-fw-version", ext_set_fw_version);
     VESC_IF->lbm_add_extension("ext-bms", ext_bms);
 

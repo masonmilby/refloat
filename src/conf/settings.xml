@@ -2482,6 +2482,200 @@ p, li { white-space: pre-wrap; }
             <suffix></suffix>
             <vTx>7</vTx>
         </braketilt_lingering>
+        <agr_strength_up>
+            <longName>AGR Uphill Strength</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;How much tilt AGR applies per degree of measured grade when climbing (in the direction of travel). 1.0 tracks the terrain 1:1. 0 disables AGR uphill response. AGR (Automatic Geometry Response) pre-tilts from a forward-looking surface sensor instead of reacting to torque.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_STRENGTH_UP</cDefine>
+            <editorDecimalsDouble>1</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>2</maxDouble>
+            <minDouble>0</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.1</stepDouble>
+            <valDouble>0</valDouble>
+            <vTxDoubleScale>1000</vTxDoubleScale>
+            <suffix></suffix>
+            <vTx>7</vTx>
+        </agr_strength_up>
+        <agr_strength_down>
+            <longName>AGR Downhill Strength</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;How much tilt AGR applies per degree of measured grade when descending (in the direction of travel). 1.0 tracks the terrain 1:1. 0 disables AGR downhill response.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_STRENGTH_DOWN</cDefine>
+            <editorDecimalsDouble>1</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>2</maxDouble>
+            <minDouble>0</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.1</stepDouble>
+            <valDouble>0</valDouble>
+            <vTxDoubleScale>1000</vTxDoubleScale>
+            <suffix></suffix>
+            <vTx>7</vTx>
+        </agr_strength_down>
+        <agr_angle_limit>
+            <longName>AGR Angle Limit</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Hard clamp on the AGR setpoint offset, degrees.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_ANGLE_LIMIT</cDefine>
+            <editorDecimalsDouble>1</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>15</maxDouble>
+            <minDouble>0</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.5</stepDouble>
+            <valDouble>8</valDouble>
+            <vTxDoubleScale>100</vTxDoubleScale>
+            <suffix> °</suffix>
+            <vTx>7</vTx>
+        </agr_angle_limit>
+        <agr_taper_erpm>
+            <longName>AGR Low-Speed Taper ERPM</longName>
+            <type>2</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Linearly scales AGR response from 0 at standstill to full strength at this ERPM. 0 disables the taper. WARNING: a nonzero taper weakens stop-hold — the emergent behavior of holding tilt while stopped on a hill. Gentleness at walking pace vs. hill-hold strength is rider preference.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_TAPER_ERPM</cDefine>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxInt>4000</maxInt>
+            <minInt>0</minInt>
+            <showDisplay>0</showDisplay>
+            <stepInt>50</stepInt>
+            <valInt>0</valInt>
+            <suffix> ERPM</suffix>
+            <vTx>3</vTx>
+        </agr_taper_erpm>
+        <agr_can_id>
+            <longName>AGR CAN ID</longName>
+            <type>2</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Standard CAN ID of the AGR sensor frame. Default 768 (0x300). Must match the sensor node firmware.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_CAN_ID</cDefine>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxInt>2047</maxInt>
+            <minInt>0</minInt>
+            <showDisplay>0</showDisplay>
+            <stepInt>1</stepInt>
+            <valInt>768</valInt>
+            <suffix></suffix>
+            <vTx>3</vTx>
+        </agr_can_id>
+        <agr_mount_offset>
+            <longName>AGR Mount Offset</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Sensor boresight angle relative to the deck, degrees. Written automatically by the agr_cal terminal command on flat ground; manual entry possible. grade = surface_angle + pitch + mount_offset.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_MOUNT_OFFSET</cDefine>
+            <editorDecimalsDouble>2</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>45</maxDouble>
+            <minDouble>-45</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.05</stepDouble>
+            <valDouble>0</valDouble>
+            <vTxDoubleScale>100</vTxDoubleScale>
+            <suffix> °</suffix>
+            <vTx>7</vTx>
+        </agr_mount_offset>
+        <agr_quality_on>
+            <longName>AGR Quality On Threshold</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Trust gate opens when sensor-reported quality reaches this value. Keep above the Off threshold — the gap is the hysteresis that prevents chatter.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_QUALITY_ON</cDefine>
+            <editorDecimalsDouble>2</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>1</maxDouble>
+            <minDouble>0</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.05</stepDouble>
+            <valDouble>0.6</valDouble>
+            <vTxDoubleScale>1000</vTxDoubleScale>
+            <suffix></suffix>
+            <vTx>7</vTx>
+        </agr_quality_on>
+        <agr_quality_off>
+            <longName>AGR Quality Off Threshold</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Trust gate closes when sensor-reported quality drops below this value; the offset then fades to zero at the Fade Rate.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_QUALITY_OFF</cDefine>
+            <editorDecimalsDouble>2</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>1</maxDouble>
+            <minDouble>0</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.05</stepDouble>
+            <valDouble>0.4</valDouble>
+            <vTxDoubleScale>1000</vTxDoubleScale>
+            <suffix></suffix>
+            <vTx>7</vTx>
+        </agr_quality_off>
+        <agr_fade_rate>
+            <longName>AGR Fade Rate</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;How fast the AGR contribution eases in/out on trust changes, in fraction per second. 2.0 = full fade in 0.5 s. Loss of sensor never snaps the setpoint.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_FADE_RATE</cDefine>
+            <editorDecimalsDouble>1</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>10</maxDouble>
+            <minDouble>0.5</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.5</stepDouble>
+            <valDouble>2</valDouble>
+            <vTxDoubleScale>100</vTxDoubleScale>
+            <suffix> /s</suffix>
+            <vTx>7</vTx>
+        </agr_fade_rate>
+        <agr_filter>
+            <longName>AGR Filter</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Low-pass cutoff on the AGR offset, Hz. Jitter survival only — geometry shapes the response, this does not.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_FILTER</cDefine>
+            <editorDecimalsDouble>0</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>30</maxDouble>
+            <minDouble>1</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>1</stepDouble>
+            <valDouble>10</valDouble>
+            <vTxDoubleScale>100</vTxDoubleScale>
+            <suffix> Hz</suffix>
+            <vTx>7</vTx>
+        </agr_filter>
+        <agr_rate_limit>
+            <longName>AGR Rate Limit</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Maximum slew of the AGR offset, degrees per second. Spurious-frame survival cap; set generously so normal terrain response is never shaped by it.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <cDefine>CFG_DFLT_AGR_RATE_LIMIT</cDefine>
+            <editorDecimalsDouble>0</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>50</maxDouble>
+            <minDouble>5</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>1</stepDouble>
+            <valDouble>15</valDouble>
+            <vTxDoubleScale>100</vTxDoubleScale>
+            <suffix> °/s</suffix>
+            <vTx>7</vTx>
+        </agr_rate_limit>
         <turntilt_strength>
             <longName>Strength</longName>
             <type>1</type>
@@ -4207,6 +4401,17 @@ p, li { white-space: pre-wrap; }
         <ser>bms.cell_lt_threshold</ser>
         <ser>bms.bms_ht_threshold</ser>
         <ser>meta.is_default</ser>
+        <ser>agr_strength_up</ser>
+        <ser>agr_strength_down</ser>
+        <ser>agr_angle_limit</ser>
+        <ser>agr_taper_erpm</ser>
+        <ser>agr_can_id</ser>
+        <ser>agr_mount_offset</ser>
+        <ser>agr_quality_on</ser>
+        <ser>agr_quality_off</ser>
+        <ser>agr_fade_rate</ser>
+        <ser>agr_filter</ser>
+        <ser>agr_rate_limit</ser>
     </SerOrder>
     <Grouping>
         <group>
@@ -4290,6 +4495,26 @@ p, li { white-space: pre-wrap; }
                     <param>::sep:: Brake Tiltback</param>
                     <param>braketilt_strength</param>
                     <param>braketilt_lingering</param>
+                </subgroupParams>
+            </subgroup>
+            <subgroup>
+                <subgroupName>AGR</subgroupName>
+                <subgroupParams>
+                    <param>::sep::Response</param>
+                    <param>agr_strength_up</param>
+                    <param>agr_strength_down</param>
+                    <param>agr_angle_limit</param>
+                    <param>agr_taper_erpm</param>
+                    <param>::sep::Sensor</param>
+                    <param>agr_can_id</param>
+                    <param>agr_mount_offset</param>
+                    <param>::sep::Trust</param>
+                    <param>agr_quality_on</param>
+                    <param>agr_quality_off</param>
+                    <param>agr_fade_rate</param>
+                    <param>::sep::Conditioning</param>
+                    <param>agr_filter</param>
+                    <param>agr_rate_limit</param>
                 </subgroupParams>
             </subgroup>
             <subgroup>

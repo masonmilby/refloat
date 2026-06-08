@@ -2184,6 +2184,7 @@ Item {
 
         ["torque_tilt.setpoint", {"name": "Torque Tilt Setpoint", "color": "#df4a98", "visible": true, "scalingGroup": "pitch"}],
         ["atr.setpoint", {"name": "ATR Setpoint", "color": "#7640d6", "visible": true, "scalingGroup": "pitch"}],
+        ["agr.setpoint", {"name": "AGR Setpoint", "color": "#2f9e6b", "visible": true, "scalingGroup": "pitch"}],
         ["brake_tilt.setpoint", {"name": "Brake Tilt Setpoint", "color": "#b29ad7", "visible": false, "scalingGroup": "pitch"}],
         ["turn_tilt.setpoint", {"name": "Turn Tilt Setpoint", "color": "#e095af", "visible": false, "scalingGroup": "pitch"}],
         ["remote.setpoint", {"name": "Remote Setpoint", "color": "#803a4d", "visible": false, "scalingGroup": "pitch"}],
@@ -2202,6 +2203,10 @@ Item {
         ["atr.accel_diff", {"name": "ATR Accel Diff", "color": "#4f5984", "visible": false}],
         ["atr.speed_boost", {"name": "ATR Speed Boost", "color": "#34633c", "visible": false}],
         ["atr.transition_boost", {"name": "ATR Transition Boost", "color": "#827029", "visible": false}],
+        ["agr.grade", {"name": "AGR Grade", "color": "#3fae7a", "visible": false}],
+        ["agr.surface_angle", {"name": "AGR Surface Angle", "color": "#57bf94", "visible": false}],
+        ["agr.quality", {"name": "AGR Quality", "color": "#82d0ad", "visible": false}],
+        ["agr.fade", {"name": "AGR Fade", "color": "#aee0c8", "visible": false}],
         ["remote.input", {"name": "Remote Throttle", "color": "#525023", "visible": false}],
 
         ["control.dt", {"name": "Control Loop dt", "color": "#e95314", "visible": false}],
@@ -7878,6 +7883,9 @@ Item {
                                 Value {label: "ATR Speed Boost"; unit: "%"; value: round(state.rtData["atr.speed_boost"] * 100);}
                                 Value {label: "Booster torque"; unit: "Nm"; value: toFixed2Zero(state.rtData["booster.torque"]);}
                                 Value {label: "Remote input"; unit: "%"; value: round(state.rtData["remote.input"] * 100);}
+                                Value {label: "AGR Quality"; unit: "%"; value: round(state.rtData["agr.quality"] * 100);}
+                                Value {label: "AGR Surface angle"; unit: "°"; value: toFixed2Zero(state.rtData["agr.surface_angle"]);}
+                                Value {label: "AGR Grade"; unit: "°"; value: toFixed2Zero(state.rtData["agr.grade"]);}
                             }
 
                             Column {
@@ -7886,6 +7894,7 @@ Item {
                                 clip: true
 
                                 Value {label: "ATR setpoint"; unit: "°"; value: toFixed2Zero(state.rtData["atr.setpoint"]);}
+                                Value {label: "AGR setpoint"; unit: "°"; value: toFixed2Zero(state.rtData["agr.setpoint"]);}
                                 Value {label: "Brake Tilt setpoint"; unit: "°"; value: toFixed2Zero(state.rtData["brake_tilt.setpoint"]);}
                                 Value {label: "Torque Tilt setpoint"; unit: "°"; value: toFixed2Zero(state.rtData["torque_tilt.setpoint"]);}
                                 Value {label: "Turn Tilt setpoint"; unit: "°"; value: toFixed2Zero(state.rtData["turn_tilt.setpoint"]);}

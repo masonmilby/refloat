@@ -313,6 +313,17 @@ typedef struct {
     float atr_amps_decel_ratio;
     float braketilt_strength;
     float braketilt_lingering;
+    float agr_strength_up;
+    float agr_strength_down;
+    float agr_angle_limit;
+    uint16_t agr_taper_erpm;
+    uint16_t agr_can_id;
+    float agr_mount_offset;
+    float agr_quality_on;
+    float agr_quality_off;
+    float agr_fade_rate;
+    float agr_filter;
+    float agr_rate_limit;
     float turntilt_strength;
     float turntilt_angle_limit;
     float turntilt_start_angle;
