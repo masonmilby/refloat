@@ -39,6 +39,11 @@ void agr_init(AGR *agr) {
     agr->last_distance = 0.0f;
     agr->cal_mode = AGR_CAL_IDLE;
     agr->cal_sweep_applied = false;
+    agr->node_status = 0.0f;
+    agr->node_gate_pct = 0.0f;
+    agr->node_sat = 0.0f;
+    agr->node_temp_c = 0.0f;
+    agr->node_cfg_crc = 0.0f;
     agr_reset(agr);
 }
 
@@ -94,6 +99,17 @@ bool agr_handle_can_frame(AGR *agr, const uint8_t *data, uint8_t len) {
     agr->rx_head = next;
     agr->last_rx_tick = s.rx_tick;
     return true;
+}
+
+void agr_handle_health_frame(AGR *agr, const uint8_t *data, uint8_t len) {
+    if (len < 7) {
+        return;
+    }
+    agr->node_status = (float) data[0];
+    agr->node_gate_pct = (float) data[1];
+    agr->node_sat = (float) data[2];
+    agr->node_temp_c = (float) data[4] - 64.0f;
+    agr->node_cfg_crc = (float) data[6];
 }
 
 // process one raw sample through classify -> locate -> profile

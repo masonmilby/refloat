@@ -95,6 +95,13 @@ typedef struct {
     float valid_fraction;
     float far_chord;  // deg, 0 when inactive
     float setpoint;   // == cond.setpoint
+
+    // node health mirrors (diagnostics only — never read in control path)
+    float node_status;    // health byte 0 (status bits)
+    float node_gate_pct;  // byte 1
+    float node_sat;       // byte 2
+    float node_temp_c;    // byte 4 minus 64
+    float node_cfg_crc;   // byte 6
 } AGR;
 
 void agr_init(AGR *agr);
@@ -106,3 +113,4 @@ void agr_update(
 );
 void agr_winddown(AGR *agr);
 bool agr_handle_can_frame(AGR *agr, const uint8_t *data, uint8_t len);
+void agr_handle_health_frame(AGR *agr, const uint8_t *data, uint8_t len);

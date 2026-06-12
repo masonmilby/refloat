@@ -2718,6 +2718,10 @@ static bool can_sid_callback(uint32_t id, uint8_t *data, uint8_t len) {
     if (id == d->float_conf.agr_can_id) {
         return agr_handle_can_frame(&d->agr, data, len);
     }
+    if (id == (uint32_t) (d->float_conf.agr_can_id + 8)) {
+        agr_handle_health_frame(&d->agr, data, len);
+        return true;
+    }
     return false;
 }
 

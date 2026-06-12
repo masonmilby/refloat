@@ -54,10 +54,14 @@
     S(footpad.adc_left, "adc_left")                                                                \
     S(footpad.adc_right, "adc_right")                                                              \
     S(remote.input, "remote.input")                                                                \
-    S(agr.valid_fraction, "agr.valid_fraction")                                                    \
     S(agr.fade, "agr.fade")                                                                        \
-    S(agr.fit_residual, "agr.fit_residual")                                                        \
-    R(agr.g_cmd, "agr.g_cmd")
+    S(agr.g_cmd, "agr.g_cmd")                                                                     \
+    S(agr.gates_f, "agr.gates")                                                                   \
+    R(agr.fit_residual, "agr.residual")                                                           \
+    R(agr.valid_fraction, "agr.valid_frac")                                                       \
+    R(agr.fit_weight, "agr.weight")                                                               \
+    R(agr.far_chord, "agr.chord")                                                                 \
+    R(agr.node_cfg_crc, "agr.node_crc")
 
 #define RT_DATA_RUNTIME_ITEMS(S, R)                                                                \
     R(setpoint, "setpoint")                                                                        \
