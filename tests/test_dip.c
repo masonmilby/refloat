@@ -1,4 +1,5 @@
 // forks/refloat/tests/test_dip.c — the spec's benchmark scenario, synthetic
+// Check-count note: ~1900 of the checks are per-tick setpoint-bounds assertions; the pinned signature itself is the ~11 scalar assertions at the tails.
 //
 // Chord-driven advection gives sustained-grade hold: on a uniform slope the
 // advection height-decomposition uses the chord from the contact patch (0,0) to

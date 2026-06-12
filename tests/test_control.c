@@ -82,6 +82,19 @@ int main(void) {
         agr_trust_update(&t, &good, false, 500.0f, 0.01f, &cfg, dt);
     }
     CHECK(t.policy_ok);
+    // exact boundary: drive reverse_m to bit-exact 1.0 m then assert strict > not triggered
+    agr_trust_init(&t);
+    for (int i = 0; i < 64; i++) {
+        agr_trust_sample(&t, true);
+    }
+    for (int i = 0; i < 99; i++) {
+        agr_trust_update(&t, &good, false, -500.0f, -0.01f, &cfg, dt);
+    }
+    // land reverse_m on exactly 1.0f: one tick of -(reverse_fade_m - reverse_m)
+    agr_trust_update(&t, &good, false, -500.0f, -(cfg.reverse_fade_m - t.reverse_m), &cfg, dt);
+    CHECK(t.policy_ok);  // trip is strict >: at exactly 1.0 m policy still ok
+    agr_trust_update(&t, &good, false, -500.0f, -0.001f, &cfg, dt);
+    CHECK(!t.policy_ok);  // one more tick over the limit trips it
     // rocking never trips: ±0.3 m oscillation
     agr_trust_init(&t);
     for (int i = 0; i < 64; i++) {

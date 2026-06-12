@@ -163,7 +163,7 @@ AgrFit agr_profile_fit(const AgrProfile *p) {
         }
     }
     // cells must clear both floors on their own — the far point sweetens an
-    // already-valid near fit, it never validates one (see Fix 2 in CLAUDE.md)
+    // already-valid near fit, it never validates one
     if (sw < AGR_FIT_MIN_W) {
         return f;
     }

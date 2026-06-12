@@ -153,7 +153,7 @@ static void ingest(AGR *agr, const AgrRawSample *s, const Time *time) {
     } else if (agr->cal_mode == AGR_CAL_TAU) {
         agr_tau_feed(
             &agr->cal_tau, &agr->pitch_ring, &agr->geo, (float) s->range_mm * 0.001f,
-            500.0f  // MAIN_THREAD_FREQ; the ring is pushed per main-loop tick
+            agr->sys_to_main * (float) SYSTEM_TICK_RATE_HZ
         );
     }
 }

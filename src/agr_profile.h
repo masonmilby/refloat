@@ -54,8 +54,8 @@ void agr_profile_init(AgrProfile *p);
 void agr_profile_insert(AgrProfile *p, float x, float z, float w);
 // ray from (x0,z0) to the hit at (x1,z1): evict cells contradicted by clearance
 void agr_profile_clear_ray(AgrProfile *p, float x0, float z0, float x1, float z1);
-void agr_profile_advance(AgrProfile *p, float dist_m);               // Task 4
-float agr_profile_grade_at(const AgrProfile *p, float x, bool *ok);  // Task 4
-void agr_profile_far_hit(AgrProfile *p, float x, float z);           // Task 5
-void agr_profile_far_reset(AgrProfile *p);                           // Task 5
-AgrFit agr_profile_fit(const AgrProfile *p);                         // Task 5
+void agr_profile_advance(AgrProfile *p, float dist_m);
+float agr_profile_grade_at(const AgrProfile *p, float x, bool *ok);
+void agr_profile_far_hit(AgrProfile *p, float x, float z);
+void agr_profile_far_reset(AgrProfile *p);
+AgrFit agr_profile_fit(const AgrProfile *p);

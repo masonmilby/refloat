@@ -29,7 +29,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// esp_tof range frame: base+0, DLC 4, big-endian (ESP_ToF_SPEC.md section 5.1)
+// esp_tof range frame: base+0, DLC 4, big-endian (ESP_ToF_SPEC.md section 4.1)
 #define AGR_FRAME_DLC 4
 #define AGR_NO_RETURN 0xFFFF
 #define AGR_TIMEOUT_TICKS (SYSTEM_TICK_RATE_HZ / 20)  // 50 ms: silence is loss
