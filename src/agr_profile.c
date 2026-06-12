@@ -106,6 +106,97 @@ static void shift_back(AgrProfile *p, float dz) {
     p->cell[0].w = 0.0f;
 }
 
+void agr_profile_far_hit(AgrProfile *p, float x, float z) {
+    if (x > AGR_FAR_MAX_M || x <= AGR_AHEAD_M) {
+        p->far_hits = 0;
+        return;
+    }
+    if (p->far_hits > 0 && fabsf(z - p->far_z) > AGR_FAR_DZ) {
+        p->far_hits = 0;  // inconsistent: restart persistence
+    }
+    p->far_x = x;
+    p->far_z = z;
+    if (p->far_hits < 255) {
+        p->far_hits++;
+    }
+}
+
+void agr_profile_far_reset(AgrProfile *p) {
+    p->far_hits = 0;
+}
+
+AgrFit agr_profile_fit(const AgrProfile *p) {
+    AgrFit f = {.valid = false,
+                .slope = 0.0f,
+                .residual = 0.0f,
+                .weight = 0.0f,
+                .near_weight = 0.0f,
+                .span = 0.0f};
+    float sw = 0.0f, sx = 0.0f, sz = 0.0f, sxx = 0.0f, sxz = 0.0f;
+    float x_min = 1e9f, x_max = -1e9f;
+    for (int i = 0; i < AGR_CELLS; i++) {
+        float w = p->cell[i].w;
+        if (w <= 0.0f) {
+            continue;
+        }
+        float x = agr_cell_x(i), z = p->cell[i].z;
+        sw += w;
+        sx += w * x;
+        sz += w * z;
+        sxx += w * x * x;
+        sxz += w * x * z;
+        if (x < x_min) {
+            x_min = x;
+        }
+        if (x > x_max) {
+            x_max = x;
+        }
+    }
+    // cells must clear both floors on their own — the far point sweetens an
+    // already-valid near fit, it never validates one (see Fix 2 in CLAUDE.md)
+    if (sw < AGR_FIT_MIN_W) {
+        return f;
+    }
+    f.near_weight = sw;
+    f.span = x_max - x_min;
+    if (f.span < AGR_FIT_MIN_SPAN) {
+        return f;
+    }
+    bool far = p->far_hits >= AGR_FAR_PERSIST && p->far_x > AGR_AHEAD_M &&
+               p->far_x <= AGR_FAR_MAX_M;
+    if (far) {
+        float w = AGR_FAR_W, x = p->far_x, z = p->far_z;
+        sw += w;
+        sx += w * x;
+        sz += w * z;
+        sxx += w * x * x;
+        sxz += w * x * z;
+    }
+    float det = sxx - sx * sx / sw;
+    if (det < 1e-6f) {
+        return f;
+    }
+    f.slope = (sxz - sx * sz / sw) / det;
+    float intercept = (sz - f.slope * sx) / sw;
+    // weighted RMS residual
+    float sse = 0.0f;
+    for (int i = 0; i < AGR_CELLS; i++) {
+        if (p->cell[i].w <= 0.0f) {
+            continue;
+        }
+        float r = p->cell[i].z - (intercept + f.slope * agr_cell_x(i));
+        sse += p->cell[i].w * r * r;
+    }
+    if (far) {
+        float r = p->far_z - (intercept + f.slope * p->far_x);
+        sse += AGR_FAR_W * r * r;
+    }
+    f.residual = sqrtf(sse / sw);
+    f.weight = sw;
+    f.valid = true;
+    return f;
+}
+
 void agr_profile_advance(AgrProfile *p, float dist_m) {
     p->frac_m += dist_m;
     while (p->frac_m >= AGR_CELL_M || p->frac_m <= -AGR_CELL_M) {
@@ -127,6 +218,10 @@ void agr_profile_advance(AgrProfile *p, float dist_m) {
                 p->far_x += AGR_CELL_M;
                 p->far_z += dz;
             }
+        }
+        // a far point advected out of the trusted band carries a stale z — drop it
+        if (p->far_hits > 0 && (p->far_x <= AGR_AHEAD_M || p->far_x > AGR_FAR_MAX_M)) {
+            p->far_hits = 0;
         }
     }
 }

@@ -35,11 +35,12 @@ typedef struct {
 } AgrProfile;
 
 typedef struct {
-    bool valid;      // enough coherent data to act on
-    float slope;     // rise/run (tan of grade angle)
-    float residual;  // weighted RMS about the line, m
-    float weight;    // total fit weight
-    float span;      // x extent of contributing data, m
+    bool valid;       // enough coherent data to act on
+    float slope;      // rise/run (tan of grade angle)
+    float residual;   // weighted RMS about the line, m
+    float weight;     // total fit weight
+    float near_weight;  // cells-only weight (far point excluded)
+    float span;       // x extent of contributing data, m
 } AgrFit;
 
 static inline float agr_cell_x(int i) {
