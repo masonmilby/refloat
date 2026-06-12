@@ -19,6 +19,7 @@
 
 #include "agr_math.h"
 #include "conf/buffer.h"
+#include "lib/utils.h"
 
 #include <math.h>
 
@@ -37,6 +38,7 @@ void agr_init(AGR *agr) {
     agr->have_distance = false;
     agr->last_distance = 0.0f;
     agr->cal_mode = AGR_CAL_IDLE;
+    agr->cal_sweep_applied = false;
     agr_reset(agr);
 }
 
@@ -157,6 +159,11 @@ void agr_update(
         dd = 0.0f;  // odometry glitch: a 500 Hz tick can't move 1 m; never feed the profile garbage
     }
 
+    if (agr->cal_mode == AGR_CAL_SWEEPING && motor->abs_erpm > 100) {
+        agr->cal_mode = AGR_CAL_IDLE;
+        log_msg("AGR cal: sweep aborted (board moved)");
+    }
+
     if (agr->sim_active) {
         // synthesize one sample per other tick at the ring head (bench tool)
         if ((agr->sim_phase++ & 1) == 0) {
@@ -212,7 +219,7 @@ void agr_update(
 
     // tau session countdown
     if (agr->cal_mode == AGR_CAL_TAU && agr->cal_tau_ticks > 0 && --agr->cal_tau_ticks == 0) {
-        agr->cal_mode = AGR_CAL_PENDING;
+        agr->cal_mode = AGR_CAL_TAU_PENDING;
     }
 
     // telemetry mirrors

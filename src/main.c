@@ -22,6 +22,7 @@
 #include "vesc_c_if.h"
 
 #include "agr.h"
+#include "agr_math.h"
 #include "atr.h"
 #include "bms.h"
 #include "booster.h"
@@ -97,7 +98,6 @@ static const FootpadSensorState headlights_off_konami_sequence[] = {
 
 static void flywheel_stop(Data *d);
 static void cmd_flywheel_toggle(Data *d, unsigned char *cfg, int len);
-static void agr_cal_tick(Data *d);
 static void terminal_agr_sim(int argc, const char **argv);
 static void terminal_agr_cal(int argc, const char **argv);
 
@@ -796,8 +796,6 @@ static void refloat_thd(void *arg) {
         time_update(&d->time, d->state.state);
 
         beeper_update(d);
-
-        agr_cal_tick(d);
 
         charging_timeout(&d->charging, &d->state);
 
@@ -2760,6 +2758,8 @@ static void terminal_agr_sim(int argc, const char **argv) {
     Data *d = (Data *) ARG;
     if (argc == 2 && strcmp(argv[1], "off") == 0) {
         d->agr.sim_active = false;
+        // discard any stale frames queued while sim was active
+        d->agr.rx_tail = d->agr.rx_head;
         VESC_IF->printf("AGR sim: off (real CAN input resumes)\n");
         return;
     }
@@ -2770,17 +2770,118 @@ static void terminal_agr_sim(int argc, const char **argv) {
     float pct = agr_parse_float(argv[1]);
     d->agr.sim_grade = tanf(pct * 0.01f);
     d->agr.sim_active = true;
-    VESC_IF->printf("AGR sim: grade=%.1f%% (slope %.3f)\n", (double) pct, (double) d->agr.sim_grade);
+    VESC_IF->printf("AGR sim: virtual ground at %.1f%% grade\n", (double) pct);
 }
 
 static void terminal_agr_cal(int argc, const char **argv) {
-    unused(argc);
-    unused(argv);
-    VESC_IF->printf("agr_cal: arriving in the next commit\n");
-}
-
-static void agr_cal_tick(Data *d) {
-    unused(d);
+    Data *d = (Data *) ARG;
+    AGR *a = &d->agr;
+    if (argc < 2) {
+        VESC_IF->printf("Usage: agr_cal <sweep|tau|apply|dump|status>\n");
+        return;
+    }
+    if (strcmp(argv[1], "sweep") == 0) {
+        if (a->cal_mode == AGR_CAL_SWEEPING) {
+            a->cal_mode = AGR_CAL_IDLE;
+            a->cal_result = agr_cal_fit(&a->cal_sweep, d->float_conf.agr_mount_angle * AGR_DEG2RAD);
+            AgrCalResult *r = &a->cal_result;
+            VESC_IF->printf(
+                "sweep fit: h=%.3f f=%.3f offset=%.2fdeg bias=%.3f rms=%.1fmm "
+                "span=%.0fdeg bins=%d\n",
+                (double) r->mount_height, (double) r->mount_fwd,
+                (double) r->mount_offset_deg, (double) r->range_bias, (double) (r->rms_m * 1000.0f),
+                (double) r->span_deg, r->bins_used
+            );
+            if (r->status == AGR_CAL_OK) {
+                a->cal_mode = AGR_CAL_PENDING;
+                VESC_IF->printf("OK -- run 'agr_cal apply' to commit\n");
+            } else if (r->status == AGR_CAL_COVERAGE) {
+                VESC_IF->printf(
+                    "REFUSED: sweep coverage too small -- tip further, especially NOSE-DOWN "
+                    "(nose-up bins shallower than 8 deg can't be used)\n"
+                );
+            } else if (r->status == AGR_CAL_RESIDUAL) {
+                VESC_IF->printf("REFUSED: residual over 15 mm -- floor not flat or mount loose\n");
+            } else if (r->status == AGR_CAL_SINGULAR) {
+                VESC_IF->printf("REFUSED: singular fit -- not enough variation in sweep\n");
+            }
+            return;
+        }
+        if (d->motor.abs_erpm > 100) {
+            VESC_IF->printf("agr_cal sweep: refused -- board is moving\n");
+            return;
+        }
+        agr_cal_sweep_init(&a->cal_sweep);
+        a->cal_mode = AGR_CAL_SWEEPING;
+        VESC_IF->printf(
+            "sweep armed -- tip NOSE-DOWN past 20 deg, then re-run 'agr_cal sweep' to fit\n"
+        );
+    } else if (strcmp(argv[1], "tau") == 0) {
+        if (!a->cal_sweep_applied) {
+            VESC_IF->printf(
+                "agr_cal tau: refused -- run + apply a sweep first "
+                "(geometry must be calibrated on this boot)\n"
+            );
+            return;
+        }
+        if (d->motor.abs_erpm > 100) {
+            VESC_IF->printf("agr_cal tau: refused -- board is moving\n");
+            return;
+        }
+        agr_tau_init(&a->cal_tau);
+        a->cal_tau_ticks = 10 * MAIN_THREAD_FREQ;
+        a->cal_mode = AGR_CAL_TAU;
+        VESC_IF->printf("rock the board for 10 s...\n");
+    } else if (strcmp(argv[1], "apply") == 0) {
+        if (a->cal_mode == AGR_CAL_PENDING && a->cal_result.status == AGR_CAL_OK) {
+            d->float_conf.agr_mount_height = a->cal_result.mount_height;
+            d->float_conf.agr_mount_fwd = a->cal_result.mount_fwd;
+            d->float_conf.agr_mount_offset = a->cal_result.mount_offset_deg;
+            d->float_conf.agr_range_bias = a->cal_result.range_bias;
+            a->trim_deg = 0.0f;
+            a->cal_sweep_applied = true;
+            a->cal_mode = AGR_CAL_IDLE;
+            write_cfg_to_eeprom(d);
+            agr_configure(&d->agr, &d->float_conf, d->main_freq_tracker.filter_frequency);
+            VESC_IF->printf("applied + saved\n");
+        } else if (a->cal_mode == AGR_CAL_TAU_PENDING) {
+            float tau = agr_tau_result(&a->cal_tau);
+            if (tau >= 0.0f) {
+                d->float_conf.agr_lag_ms = tau;
+                a->cal_mode = AGR_CAL_IDLE;
+                write_cfg_to_eeprom(d);
+                agr_configure(&d->agr, &d->float_conf, d->main_freq_tracker.filter_frequency);
+                VESC_IF->printf("lag %.1f ms applied + saved\n", (double) tau);
+            } else {
+                a->cal_mode = AGR_CAL_IDLE;
+                VESC_IF->printf("tau scan had too few samples -- rock longer and retry\n");
+            }
+        } else {
+            VESC_IF->printf("nothing pending\n");
+        }
+    } else if (strcmp(argv[1], "dump") == 0) {
+        VESC_IF->printf("pitch_deg,mean_r_m,n\n");
+        for (int i = 0; i < AGR_CAL_BINS; i++) {
+            if (a->cal_sweep.bin[i].n == 0) {
+                continue;
+            }
+            float pd = -40.0f + ((float) i + 0.5f) * AGR_CAL_BIN_DEG;
+            VESC_IF->printf(
+                "%.2f,%.4f,%u\n", (double) pd,
+                (double) (a->cal_sweep.bin[i].sum_r / (float) a->cal_sweep.bin[i].n),
+                (unsigned int) a->cal_sweep.bin[i].n
+            );
+        }
+    } else if (strcmp(argv[1], "status") == 0) {
+        VESC_IF->printf(
+            "mode=%d gates=%d fade=%.2f g_cmd=%.2f resid=%.1fmm valid=%.0f%% trim=%.2f\n",
+            (int) a->cal_mode, (int) a->gates_f, (double) a->fade, (double) a->g_cmd,
+            (double) (a->fit_residual * 1000.0f), (double) (a->valid_fraction * 100.0f),
+            (double) a->trim_deg
+        );
+    } else {
+        VESC_IF->printf("Usage: agr_cal <sweep|tau|apply|dump|status>\n");
+    }
 }
 
 INIT_FUN(lib_info *info) {

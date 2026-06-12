@@ -42,7 +42,13 @@ typedef struct {
     time_t rx_tick;
 } AgrRawSample;
 
-typedef enum { AGR_CAL_IDLE = 0, AGR_CAL_SWEEPING, AGR_CAL_TAU, AGR_CAL_PENDING } AgrCalMode;
+typedef enum {
+    AGR_CAL_IDLE = 0,
+    AGR_CAL_SWEEPING,
+    AGR_CAL_TAU,
+    AGR_CAL_PENDING,
+    AGR_CAL_TAU_PENDING,
+} AgrCalMode;
 
 typedef struct {
     // rx ring: written by the CAN callback, drained by agr_update (single
@@ -74,6 +80,7 @@ typedef struct {
 
     // calibration session state
     AgrCalMode cal_mode;
+    bool cal_sweep_applied;  // true once a sweep has been applied this boot
     AgrCalSweep cal_sweep;
     AgrTauScan cal_tau;
     AgrCalResult cal_result;
