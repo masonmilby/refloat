@@ -49,3 +49,27 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad);
 float agr_cal_model(
     float pitch, float mount_angle, float theta_err, float h, float f, float b
 );
+
+#define AGR_TAU_CANDIDATES 16
+#define AGR_TAU_STEP_MS 4.0f
+#define AGR_TRIM_LIMIT_DEG 0.5f
+#define AGR_TRIM_TAU_S 600.0f
+
+typedef struct {
+    float sse[AGR_TAU_CANDIDATES];
+    uint32_t n;
+    bool active;
+} AgrTauScan;
+
+void agr_tau_init(AgrTauScan *t);
+// feed one range sample; ring/geometry provide pitch-at-lag lookup.
+// tick_hz: pitch ring write rate (500); used to convert ms to ticks.
+void agr_tau_feed(
+    AgrTauScan *t, const AgrPitchRing *ring, const AgrGeometry *geo, float range_m,
+    float tick_hz
+);
+// winner with parabolic interpolation; returns ms, or -1 if n too small
+float agr_tau_result(const AgrTauScan *t);
+
+// live trim: slow integrator on trusted grade bias; returns updated trim (deg)
+float agr_trim_update(float trim_deg, float g_cmd_deg, float fade, bool moving, float dt);

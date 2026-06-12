@@ -197,5 +197,140 @@ int main(void) {
         CHECK_NEAR(pt.z, 0.0f, 0.002f);
     }
 
+    // --- tau scan: synthetic rocking with 20 ms true lag ---
+    {
+        AgrGeometry geo = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
+                           .mount_fwd = f, .range_bias = b};
+        AgrPitchRing ring;
+        agr_pitch_ring_init(&ring);
+        AgrTauScan tau;
+        agr_tau_init(&tau);
+        const float tick_hz = 500.0f;
+        float t_now = 0.0f;
+        float pitch_hist[64] = {0};  // enough for 20 ms at 500 Hz
+        int ph = 0;
+        for (int i = 0; i < 5000; i++) {  // 10 s of rocking at 1.2 Hz, +-8 deg
+            t_now += 1.0f / tick_hz;
+            float pitch = 8.0f * AGR_DEG2RAD * sinf(2.0f * 3.14159265f * 1.2f * t_now);
+            agr_pitch_ring_push(&ring, pitch);
+            pitch_hist[ph % 64] = pitch;
+            ph++;
+            if (i % 2 == 0 && ph > 10) {  // 250 Hz sensor, range lags pitch by 10 ticks
+                float lagged = pitch_hist[(ph - 1 - 10) % 64];
+                float r = agr_cal_model(lagged, cad, 0.0f, h, f, b);
+                agr_tau_feed(&tau, &ring, &geo, r, tick_hz);
+            }
+        }
+        float tau_ms = agr_tau_result(&tau);
+        CHECK(tau_ms > 18.0f && tau_ms < 22.0f);
+    }
+
+    // --- live trim: converges against a planted offset error, clamps, freezes ---
+    // Model: g_cmd = planted_bias - trim (trim corrects subtractively through locate).
+    // Equilibrium: g_cmd = 0 -> trim = planted_bias = -0.3 deg.
+    // TAU=600 s; run 5*TAU so trim reaches >99% of target (within 0.01 deg of -0.3).
+    {
+        float trim = 0.0f;
+        for (int i = 0; i < 500 * 3000; i++) {  // 50 min = 5 tau
+            trim = agr_trim_update(trim, -0.3f - trim, 1.0f, true, 0.002f);
+        }
+        CHECK_NEAR(trim, -0.3f, 0.05f);
+        float frozen = agr_trim_update(trim, 5.0f, 0.5f, true, 0.002f);
+        CHECK_NEAR(frozen, trim, 1e-6f);
+        for (int i = 0; i < 500 * 3600; i++) {
+            trim = agr_trim_update(trim, -5.0f, 1.0f, true, 0.002f);
+        }
+        CHECK_NEAR(trim, -AGR_TRIM_LIMIT_DEG, 1e-3f);
+    }
+
+    // --- tau: insufficient samples (n=400) returns -1 ---
+    {
+        AgrGeometry geo2 = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
+                            .mount_fwd = f, .range_bias = b};
+        AgrPitchRing ring2;
+        agr_pitch_ring_init(&ring2);
+        AgrTauScan tau2;
+        agr_tau_init(&tau2);
+        for (int i = 0; i < 400; i++) {
+            float pitch = 8.0f * AGR_DEG2RAD * sinf(2.0f * 3.14159265f * 1.2f * (float) i / 500.0f);
+            agr_pitch_ring_push(&ring2, pitch);
+            float r = agr_cal_model(pitch, cad, 0.0f, h, f, b);
+            agr_tau_feed(&tau2, &ring2, &geo2, r, 500.0f);
+        }
+        CHECK(tau2.n == 400);
+        CHECK_NEAR(agr_tau_result(&tau2), -1.0f, 1e-6f);
+    }
+
+    // --- tau at 0 ms lag: true lag 0 ticks -> result < 2 ms ---
+    {
+        AgrGeometry geo3 = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
+                            .mount_fwd = f, .range_bias = b};
+        AgrPitchRing ring3;
+        agr_pitch_ring_init(&ring3);
+        AgrTauScan tau3;
+        agr_tau_init(&tau3);
+        float t3 = 0.0f;
+        for (int i = 0; i < 5000; i++) {
+            t3 += 1.0f / 500.0f;
+            float pitch = 8.0f * AGR_DEG2RAD * sinf(2.0f * 3.14159265f * 1.2f * t3);
+            agr_pitch_ring_push(&ring3, pitch);
+            if (i % 2 == 0) {
+                // range uses CURRENT pitch (0 ms lag)
+                float r = agr_cal_model(pitch, cad, 0.0f, h, f, b);
+                agr_tau_feed(&tau3, &ring3, &geo3, r, 500.0f);
+            }
+        }
+        float tau3_ms = agr_tau_result(&tau3);
+        CHECK(tau3_ms < 2.0f);
+    }
+
+    // --- tau at 60 ms lag (30 ticks): edge-candidate behavior ---
+    // At lag 60 ms = candidate index 15 (the last one, AGR_TAU_CANDIDATES-1),
+    // parabolic interpolation is skipped (no right neighbor). The result is
+    // exactly candidate 15's ms value = 60.0 ms (no interpolation at edge).
+    {
+        AgrGeometry geo4 = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
+                            .mount_fwd = f, .range_bias = b};
+        AgrPitchRing ring4;
+        agr_pitch_ring_init(&ring4);
+        AgrTauScan tau4;
+        agr_tau_init(&tau4);
+        float t4 = 0.0f;
+        float pitch_hist4[64] = {0};
+        int ph4 = 0;
+        for (int i = 0; i < 5000; i++) {
+            t4 += 1.0f / 500.0f;
+            float pitch = 8.0f * AGR_DEG2RAD * sinf(2.0f * 3.14159265f * 1.2f * t4);
+            agr_pitch_ring_push(&ring4, pitch);
+            pitch_hist4[ph4 % 64] = pitch;
+            ph4++;
+            if (i % 2 == 0 && ph4 > 30) {  // range lags by 30 ticks = 60 ms
+                float lagged = pitch_hist4[(ph4 - 1 - 30) % 64];
+                float r = agr_cal_model(lagged, cad, 0.0f, h, f, b);
+                agr_tau_feed(&tau4, &ring4, &geo4, r, 500.0f);
+            }
+        }
+        float tau4_ms = agr_tau_result(&tau4);
+        // Winner is candidate 15 (60 ms); edge case skips parabolic interp -> returns 60.0
+        CHECK_NEAR(tau4_ms, 60.0f, 1e-3f);
+    }
+
+    // --- trim freeze when not moving ---
+    {
+        float trim_frozen = 0.1f;
+        float result = agr_trim_update(trim_frozen, 5.0f, 1.0f, false, 0.002f);
+        CHECK_NEAR(result, trim_frozen, 1e-6f);
+    }
+
+    // --- trim sign pin: positive g_cmd bias converges to +0.3 ---
+    // Model: g_cmd = planted_bias - trim; equilibrium trim = +0.3 for bias = +0.3.
+    {
+        float trim = 0.0f;
+        for (int i = 0; i < 500 * 3000; i++) {
+            trim = agr_trim_update(trim, 0.3f - trim, 1.0f, true, 0.002f);
+        }
+        CHECK_NEAR(trim, 0.3f, 0.05f);
+    }
+
     T_REPORT();
 }

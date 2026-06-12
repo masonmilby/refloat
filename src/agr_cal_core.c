@@ -172,3 +172,57 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad) {
     res.status = res.rms_m <= AGR_CAL_MAX_RESID_M ? AGR_CAL_OK : AGR_CAL_RESIDUAL;
     return res;
 }
+
+void agr_tau_init(AgrTauScan *t) {
+    for (int i = 0; i < AGR_TAU_CANDIDATES; i++) {
+        t->sse[i] = 0.0f;
+    }
+    t->n = 0;
+    t->active = false;
+}
+
+void agr_tau_feed(
+    AgrTauScan *t, const AgrPitchRing *ring, const AgrGeometry *geo, float range_m,
+    float tick_hz
+) {
+    for (int i = 0; i < AGR_TAU_CANDIDATES; i++) {
+        float lag_ticks = (float) i * AGR_TAU_STEP_MS * tick_hz / 1000.0f;
+        float p = agr_pitch_ring_at(ring, lag_ticks);
+        float pred = agr_cal_model(
+            p, geo->mount_angle, geo->mount_offset, geo->mount_height, geo->mount_fwd,
+            geo->range_bias
+        );
+        float r = range_m - pred;
+        t->sse[i] += r * r;
+    }
+    t->n++;
+}
+
+float agr_tau_result(const AgrTauScan *t) {
+    if (t->n < 500) {
+        return -1.0f;
+    }
+    int best = 0;
+    for (int i = 1; i < AGR_TAU_CANDIDATES; i++) {
+        if (t->sse[i] < t->sse[best]) {
+            best = i;
+        }
+    }
+    float ms = (float) best * AGR_TAU_STEP_MS;
+    if (best > 0 && best < AGR_TAU_CANDIDATES - 1) {
+        float y0 = t->sse[best - 1], y1 = t->sse[best], y2 = t->sse[best + 1];
+        float denom = y0 - 2.0f * y1 + y2;
+        if (denom > 1e-12f) {
+            ms += 0.5f * (y0 - y2) / denom * AGR_TAU_STEP_MS;
+        }
+    }
+    return ms;
+}
+
+float agr_trim_update(float trim_deg, float g_cmd_deg, float fade, bool moving, float dt) {
+    if (fade < 0.99f || !moving) {
+        return trim_deg;
+    }
+    trim_deg += g_cmd_deg * dt / AGR_TRIM_TAU_S;
+    return agr_clampf(trim_deg, -AGR_TRIM_LIMIT_DEG, AGR_TRIM_LIMIT_DEG);
+}
