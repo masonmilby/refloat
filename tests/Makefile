@@ -6,6 +6,7 @@ CORE_SRC += ../src/agr_geometry.c
 CORE_SRC += ../src/agr_profile.c
 CORE_SRC += ../src/agr_control.c
 CORE_SRC += ../src/filters/ema.c
+CORE_SRC += ../src/agr_cal_core.c
 TESTS := $(patsubst %.c,%,$(wildcard test_*.c))
 
 all: $(TESTS)
