@@ -54,10 +54,10 @@
     S(footpad.adc_left, "adc_left")                                                                \
     S(footpad.adc_right, "adc_right")                                                              \
     S(remote.input, "remote.input")                                                                \
-    S(agr.quality, "agr.quality")                                                                  \
+    S(agr.valid_fraction, "agr.valid_fraction")                                                    \
     S(agr.fade, "agr.fade")                                                                        \
-    S(agr.surface_angle, "agr.surface_angle")                                                      \
-    R(agr.grade, "agr.grade")
+    S(agr.fit_residual, "agr.fit_residual")                                                        \
+    R(agr.g_cmd, "agr.g_cmd")
 
 #define RT_DATA_RUNTIME_ITEMS(S, R)                                                                \
     R(setpoint, "setpoint")                                                                        \

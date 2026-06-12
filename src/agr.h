@@ -17,8 +17,11 @@
 
 #pragma once
 
+#include "agr_cal_core.h"
+#include "agr_control.h"
+#include "agr_geometry.h"
+#include "agr_profile.h"
 #include "conf/datatypes.h"
-#include "filters/ema.h"
 #include "imu.h"
 #include "motor_data.h"
 #include "time.h"
@@ -26,57 +29,73 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Grade frame received over CAN, big-endian (VESC buffer_* convention).
-#define AGR_FRAME_DLC 8
-#define AGR_ANGLE_SCALE 100.0f  // int16 centidegrees
-#define AGR_QUALITY_SCALE 255.0f  // uint8 -> 0..1
-// no frame for 50 ms counts as link loss
-#define AGR_TIMEOUT_TICKS (SYSTEM_TICK_RATE_HZ / 20)
+// esp_tof range frame: base+0, DLC 4, big-endian (ESP_ToF_SPEC.md section 5.1)
+#define AGR_FRAME_DLC 4
+#define AGR_NO_RETURN 0xFFFF
+#define AGR_TIMEOUT_TICKS (SYSTEM_TICK_RATE_HZ / 20)  // 50 ms: silence is loss
+#define AGR_RX_RING 4
 
 typedef struct {
-    // mailbox: written by the CAN rx callback, read by agr_update on the main
-    // thread. torn reads mix adjacent frames' fields; benign, all conditioned.
-    volatile float mb_surface_angle;  // degrees, sensor frame
-    volatile float mb_quality;  // 0..1
-    volatile uint8_t mb_seq;
-    volatile uint8_t mb_diag;
-    volatile time_t mb_rx_tick;
+    uint16_t range_mm;
+    uint8_t strength;
+    uint8_t counter;
+    time_t rx_tick;
+} AgrRawSample;
 
-    // bench sim (agr_sim terminal command)
+typedef enum { AGR_CAL_IDLE = 0, AGR_CAL_SWEEPING, AGR_CAL_TAU, AGR_CAL_PENDING } AgrCalMode;
+
+typedef struct {
+    // rx ring: written by the CAN callback, drained by agr_update (single
+    // writer / single reader; torn reads benign as in v1)
+    volatile AgrRawSample rx[AGR_RX_RING];
+    volatile uint8_t rx_head;
+    uint8_t rx_tail;
+    volatile time_t last_rx_tick;
+    uint8_t last_counter;
+    uint32_t can_loss_count;
+
     bool sim_active;
-    float sim_surface_angle;
-    float sim_quality;
+    float sim_grade;  // tan units
+    uint8_t sim_phase;
 
-    bool trusted;
-    float fade;  // 0..1, slews at agr_fade_rate
+    AgrPitchRing pitch_ring;
+    AgrGeometry geo;  // radians/meters, derived from config + trim each configure
+    AgrTuning tuning;
+    AgrProfile profile;
+    AgrTrust trust;
+    AgrCond cond;
+    AgrFit fit;
 
-    bool dir_forward;  // debounced travel direction (+-100 erpm hysteresis)
+    float trim_deg;
+    float lag_ticks;
+    float sys_to_main;  // SYSTEM_TICK_RATE_HZ ticks → main-loop ticks
+    float last_distance;
+    bool have_distance;
 
-    // telemetry mirrors of the last consumed wire values
-    float surface_angle;
-    float quality;
+    // calibration session state
+    AgrCalMode cal_mode;
+    AgrCalSweep cal_sweep;
+    AgrTauScan cal_tau;
+    AgrCalResult cal_result;
+    uint32_t cal_tau_ticks;
 
-    float grade;  // derotated ground-vs-gravity, degrees
-    EMA offset_ema;
-    float setpoint;  // conditioned offset, added into the tilt aggregation
+    // telemetry mirrors (floats for rt_data)
+    float g_cmd;         // fitted grade, deg
+    float fade;          // == trust.fade
+    float gates_f;       // bitfield: link|sight<<1|fit<<2|policy<<3
+    float fit_residual;  // m
+    float fit_weight;
+    float valid_fraction;
+    float far_chord;  // deg, 0 when inactive
+    float setpoint;   // == cond.setpoint
 } AGR;
 
 void agr_init(AGR *agr);
-
 void agr_reset(AGR *agr);
-
 void agr_configure(AGR *agr, const RefloatConfig *config, float frequency);
-
 void agr_update(
-    AGR *agr,
-    const MotorData *motor,
-    const IMU *imu,
-    const Time *time,
-    const RefloatConfig *config,
-    float dt
+    AGR *agr, const MotorData *motor, const IMU *imu, const Time *time,
+    const RefloatConfig *config, float dt
 );
-
 void agr_winddown(AGR *agr);
-
-// decode one contract frame into the mailbox; returns false on a short frame
 bool agr_handle_can_frame(AGR *agr, const uint8_t *data, uint8_t len);

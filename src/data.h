@@ -129,8 +129,4 @@ typedef struct {
     float softstart_pid_limit;
 
     uint64_t odometer;
-
-    // Feature: AGR mount calibration (agr_cal terminal command)
-    int agr_cal_remaining;
-    float agr_cal_accum;
 } Data;

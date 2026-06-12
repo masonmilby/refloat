@@ -17,120 +17,218 @@
 
 #include "agr.h"
 
+#include "agr_math.h"
 #include "conf/buffer.h"
-#include "lib/utils.h"
 
 #include <math.h>
 
 void agr_init(AGR *agr) {
-    agr->mb_surface_angle = 0.0f;
-    agr->mb_quality = 0.0f;
-    agr->mb_seq = 0;
-    agr->mb_diag = 0;
-    agr->mb_rx_tick = 0;
-
+    agr->rx_head = 0;
+    agr->rx_tail = 0;
+    agr->last_rx_tick = 0;
+    agr->last_counter = 0;
+    agr->can_loss_count = 0;
     agr->sim_active = false;
-    agr->sim_surface_angle = 0.0f;
-    agr->sim_quality = 0.0f;
-
-    ema_init(&agr->offset_ema);
-
+    agr->sim_grade = 0.0f;
+    agr->sim_phase = 0;
+    agr_pitch_ring_init(&agr->pitch_ring);
+    agr->sys_to_main = 500.0f / (float) SYSTEM_TICK_RATE_HZ;
+    agr->trim_deg = 0.0f;
+    agr->have_distance = false;
+    agr->last_distance = 0.0f;
+    agr->cal_mode = AGR_CAL_IDLE;
     agr_reset(agr);
 }
 
 void agr_reset(AGR *agr) {
-    agr->trusted = false;
+    agr_profile_init(&agr->profile);
+    agr_trust_init(&agr->trust);
+    agr_cond_init(&agr->cond);
+    agr->fit = (AgrFit){0};
+    agr->g_cmd = 0.0f;
     agr->fade = 0.0f;
-    agr->dir_forward = true;
-    agr->grade = 0.0f;
-    ema_reset(&agr->offset_ema, 0.0f);
+    agr->gates_f = 0.0f;
+    agr->fit_residual = 0.0f;
+    agr->fit_weight = 0.0f;
+    agr->valid_fraction = 0.0f;
+    agr->far_chord = 0.0f;
     agr->setpoint = 0.0f;
 }
 
 void agr_configure(AGR *agr, const RefloatConfig *config, float frequency) {
-    ema_configure(&agr->offset_ema, config->agr_filter, frequency);
-}
+    agr->geo.mount_angle = config->agr_mount_angle * AGR_DEG2RAD;
+    agr->geo.mount_offset = (config->agr_mount_offset + agr->trim_deg) * AGR_DEG2RAD;
+    agr->geo.mount_height = config->agr_mount_height;
+    agr->geo.mount_fwd = config->agr_mount_fwd;
+    agr->geo.range_bias = config->agr_range_bias;
+    agr->lag_ticks = config->agr_lag_ms * frequency / 1000.0f;
+    agr->sys_to_main = frequency / (float) SYSTEM_TICK_RATE_HZ;
 
-void agr_update(
-    AGR *agr,
-    const MotorData *motor,
-    const IMU *imu,
-    const Time *time,
-    const RefloatConfig *config,
-    float dt
-) {
-    // bench sim: refresh the mailbox each tick so staleness sees a live sensor
-    if (agr->sim_active) {
-        agr->mb_surface_angle = agr->sim_surface_angle;
-        agr->mb_quality = agr->sim_quality;
-        agr->mb_rx_tick = time->now;
-    }
-
-    // mailbox snapshot; torn reads benign (see agr.h)
-    float surface_angle = agr->mb_surface_angle;
-    float quality = agr->mb_quality;
-    bool stale = time->now - agr->mb_rx_tick > AGR_TIMEOUT_TICKS;
-
-    agr->surface_angle = surface_angle;
-    agr->quality = quality;
-
-    // trust gate: staleness + quality hysteresis (holds between thresholds)
-    if (stale || quality < config->agr_quality_off) {
-        agr->trusted = false;
-    } else if (quality >= config->agr_quality_on) {
-        agr->trusted = true;
-    }
-
-    // ease the trust transition, never snap
-    rate_limitf(&agr->fade, agr->trusted ? 1.0f : 0.0f, config->agr_fade_rate * dt);
-
-    // derotate to gravity: deck attitude cancels between imu->pitch and
-    // surface_angle, leaving ground-vs-gravity (self-tilt feeds back nothing)
-    agr->grade = surface_angle + imu->pitch + config->agr_mount_offset;
-
-    // debounced travel direction (+-100 erpm)
-    if (motor->erpm > 100.0f) {
-        agr->dir_forward = true;
-    } else if (motor->erpm < -100.0f) {
-        agr->dir_forward = false;
-    }
-
-    // offset is a pure function of the current grade: up/down picks the gain,
-    // the grade's sign sets the direction, so no per-case mode logic is needed
-    bool uphill = agr->dir_forward == (agr->grade > 0.0f);
-    float strength = uphill ? config->agr_strength_up : config->agr_strength_down;
-    float raw = clampf(
-        strength * agr->grade, -config->agr_angle_limit, config->agr_angle_limit
-    );
-
-    // optional low-speed taper; 0 disables so the offset holds at a standstill
-    if (config->agr_taper_erpm > 0) {
-        raw *= fminf(motor->abs_erpm / config->agr_taper_erpm, 1.0f);
-    }
-
-    // conditioning: fade, low-pass, rate cap; reject spurious frames and jitter
-    ema_update(&agr->offset_ema, raw * agr->fade);
-    rate_limitf(&agr->setpoint, agr->offset_ema.value, config->agr_rate_limit * dt);
-}
-
-void agr_winddown(AGR *agr) {
-    agr->setpoint *= 0.995f;
-    agr->offset_ema.value *= 0.995f;
+    agr->tuning.strength_up = config->agr_strength_up;
+    agr->tuning.strength_down = config->agr_strength_down;
+    agr->tuning.angle_limit_up = config->agr_angle_limit_up;
+    agr->tuning.angle_limit_down = config->agr_angle_limit_down;
+    agr->tuning.taper_erpm = (float) config->agr_taper_erpm;
+    agr->tuning.sight_on = config->agr_sight_on;
+    agr->tuning.sight_off = config->agr_sight_off;
+    agr->tuning.fade_rate = config->agr_fade_rate;
+    agr->tuning.reverse_fade_m = config->agr_reverse_fade_m;
+    agr->tuning.rate_limit = config->agr_rate_limit;
+    agr_cond_configure(&agr->cond, config->agr_filter, frequency);
 }
 
 bool agr_handle_can_frame(AGR *agr, const uint8_t *data, uint8_t len) {
     if (len < AGR_FRAME_DLC) {
         return false;
     }
-
     int32_t ind = 0;
-    int16_t angle_cdeg = buffer_get_int16(data, &ind);
-
-    agr->mb_surface_angle = angle_cdeg / AGR_ANGLE_SCALE;
-    agr->mb_quality = data[ind] / AGR_QUALITY_SCALE;
-    agr->mb_seq = data[ind + 1];
-    agr->mb_diag = data[ind + 2];
-    agr->mb_rx_tick = vesc_system_time_ticks();
-
+    uint8_t next = (uint8_t) ((agr->rx_head + 1) % AGR_RX_RING);
+    AgrRawSample s;
+    s.range_mm = buffer_get_uint16(data, &ind);
+    s.strength = data[ind];
+    s.counter = data[ind + 1];
+    s.rx_tick = vesc_system_time_ticks();
+    agr->rx[next] = s;
+    agr->rx_head = next;
+    agr->last_rx_tick = s.rx_tick;
     return true;
+}
+
+// process one raw sample through classify -> locate -> profile
+static void ingest(AGR *agr, const AgrRawSample *s, const Time *time) {
+    bool valid = s->range_mm != AGR_NO_RETURN && s->range_mm != 0;
+    // per received slot, never per tick (sight window counts sensor frames)
+    agr_trust_sample(&agr->trust, valid);
+
+    uint8_t expected = (uint8_t) (agr->last_counter + 1);
+    if (agr->trust.bits_n > 1 && s->counter != expected) {
+        agr->can_loss_count += (uint8_t) (s->counter - expected);
+    }
+    agr->last_counter = s->counter;
+
+    if (!valid) {
+        return;  // blindness evidence: routed to trust only, never terrain
+    }
+    // lag compensation: pitch at emission time = rx age + configured pipeline lag
+    // rx age is in system ticks; the pitch ring (and lag_ticks) are in main-loop ticks
+    float lag = (float) (time->now - s->rx_tick) * agr->sys_to_main + agr->lag_ticks;
+    float pitch = agr_pitch_ring_at(&agr->pitch_ring, lag);
+    AgrGroundPoint pt = agr_locate(&agr->geo, pitch, (float) s->range_mm * 0.001f);
+    if (!pt.ok) {
+        return;
+    }
+    if (pt.x <= AGR_AHEAD_M) {
+        // clearance sweep from the sensor origin toward the hit
+        float a = agr->geo.mount_height - AGR_WHEEL_RADIUS_M;
+        float sx = agr->geo.mount_fwd * cosf(pitch) - a * sinf(pitch);
+        float sz = AGR_WHEEL_RADIUS_M + agr->geo.mount_fwd * sinf(pitch) + a * cosf(pitch);
+        agr_profile_clear_ray(&agr->profile, sx, sz, pt.x, pt.z);
+        // strength scales insertion weight: 0..255 -> 0.25..1.25
+        float w = 0.25f + (float) s->strength / 255.0f;
+        agr_profile_insert(&agr->profile, pt.x, pt.z, w);
+    } else {
+        agr_profile_far_hit(&agr->profile, pt.x, pt.z);
+    }
+    // calibration capture taps the same converted sample
+    if (agr->cal_mode == AGR_CAL_SWEEPING) {
+        agr_cal_sweep_add(&agr->cal_sweep, pitch, (float) s->range_mm * 0.001f);
+    } else if (agr->cal_mode == AGR_CAL_TAU) {
+        agr_tau_feed(
+            &agr->cal_tau, &agr->pitch_ring, &agr->geo, (float) s->range_mm * 0.001f,
+            500.0f  // MAIN_THREAD_FREQ; the ring is pushed per main-loop tick
+        );
+    }
+}
+
+void agr_update(
+    AGR *agr, const MotorData *motor, const IMU *imu, const Time *time,
+    const RefloatConfig *config, float dt
+) {
+    agr_pitch_ring_push(&agr->pitch_ring, imu->pitch * AGR_DEG2RAD);
+
+    // odometry delta (mc_get_distance is signed net meters)
+    float dd = 0.0f;
+    if (agr->have_distance) {
+        dd = motor->distance - agr->last_distance;
+    }
+    agr->last_distance = motor->distance;
+    agr->have_distance = true;
+    if (!isfinite(dd) || fabsf(dd) > 1.0f) {
+        dd = 0.0f;  // odometry glitch: a 500 Hz tick can't move 1 m; never feed the profile garbage
+    }
+
+    if (agr->sim_active) {
+        // synthesize one sample per other tick at the ring head (bench tool)
+        if ((agr->sim_phase++ & 1) == 0) {
+            float pitch = imu->pitch * AGR_DEG2RAD;
+            float delta = agr->geo.mount_angle + agr->geo.mount_offset - pitch;
+            float a = agr->geo.mount_height - AGR_WHEEL_RADIUS_M;
+            float xs = agr->geo.mount_fwd * cosf(pitch) - a * sinf(pitch);
+            float zs = AGR_WHEEL_RADIUS_M + agr->geo.mount_fwd * sinf(pitch) + a * cosf(pitch);
+            float g = agr->sim_grade;
+            float denom = sinf(delta) + g * cosf(delta);
+            if (denom > 0.01f) {
+                float t_ray = (zs - g * xs) / denom;
+                AgrRawSample s = {
+                    .range_mm = (uint16_t) (t_ray * 1000.0f),
+                    .strength = 200,
+                    .counter = (uint8_t) (agr->last_counter + 1),
+                    .rx_tick = time->now,
+                };
+                agr->last_rx_tick = time->now;
+                ingest(agr, &s, time);
+            }
+        }
+    } else {
+        while (agr->rx_tail != agr->rx_head) {
+            agr->rx_tail = (uint8_t) ((agr->rx_tail + 1) % AGR_RX_RING);
+            AgrRawSample s = agr->rx[agr->rx_tail];  // struct copy from volatile
+            ingest(agr, &s, time);
+        }
+    }
+
+    agr_profile_advance(&agr->profile, dd);
+    agr->fit = agr_profile_fit(&agr->profile);
+
+    // fitted grade in degrees, this tick (0 when the fit is not actionable)
+    agr->g_cmd = agr->fit.valid ? atanf(agr->fit.slope) * AGR_RAD2DEG : 0.0f;
+
+    bool stale = (time->now - agr->last_rx_tick) > AGR_TIMEOUT_TICKS;
+    agr_trust_update(&agr->trust, &agr->fit, stale, motor->erpm, dd, &agr->tuning, dt);
+
+    float raw = agr->fit.valid
+        ? agr_law(&agr->fit, agr->trust.dir_forward, motor->abs_erpm, &agr->tuning)
+        : 0.0f;
+    agr_cond_update(&agr->cond, raw, agr->trust.fade, &agr->tuning, dt);
+
+    // live trim (bounded; feeds back through geometry on next configure)
+    bool moving = motor->abs_erpm > 500.0f;
+    float new_trim =
+        agr_trim_update(agr->trim_deg, agr->fit.valid ? agr->g_cmd : 0.0f, agr->trust.fade, moving, dt);
+    if (new_trim != agr->trim_deg) {
+        agr->trim_deg = new_trim;
+        agr->geo.mount_offset = (config->agr_mount_offset + agr->trim_deg) * AGR_DEG2RAD;
+    }
+
+    // tau session countdown
+    if (agr->cal_mode == AGR_CAL_TAU && agr->cal_tau_ticks > 0 && --agr->cal_tau_ticks == 0) {
+        agr->cal_mode = AGR_CAL_PENDING;
+    }
+
+    // telemetry mirrors
+    agr->fade = agr->trust.fade;
+    agr->gates_f = (float) ((agr->trust.link_ok ? 1 : 0) | (agr->trust.sight_ok ? 2 : 0) |
+                            (agr->trust.fit_ok ? 4 : 0) | (agr->trust.policy_ok ? 8 : 0));
+    agr->fit_residual = agr->fit.residual;
+    agr->fit_weight = agr->fit.weight;
+    agr->valid_fraction = agr->trust.valid_fraction;
+    agr->far_chord = agr->profile.far_hits >= AGR_FAR_PERSIST
+        ? atanf(agr->profile.far_z / agr->profile.far_x) * AGR_RAD2DEG
+        : 0.0f;
+    agr->setpoint = agr->cond.setpoint;
+}
+
+void agr_winddown(AGR *agr) {
+    agr_cond_winddown(&agr->cond);
+    agr->setpoint = agr->cond.setpoint;
 }

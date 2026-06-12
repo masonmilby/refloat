@@ -1263,9 +1263,6 @@ static void data_init(Data *d) {
     d->beep_duration = 0.0f;
     d->beeper_timer = 0;
 
-    d->agr_cal_remaining = 0;
-    d->agr_cal_accum = 0.0f;
-
     configure(d);
 }
 
@@ -1689,17 +1686,24 @@ static void cmd_tune_defaults(Data *d) {
     d->float_conf.atr_amps_decel_ratio = CFG_DFLT_ATR_AMPS_DECEL_RATIO;
     d->float_conf.braketilt_strength = CFG_DFLT_BRAKETILT_STRENGTH;
     d->float_conf.braketilt_lingering = CFG_DFLT_BRAKETILT_LINGERING;
+    d->float_conf.agr_mount_angle = CFG_DFLT_AGR_MOUNT_ANGLE;
+    d->float_conf.agr_mount_height = CFG_DFLT_AGR_MOUNT_HEIGHT;
+    d->float_conf.agr_mount_fwd = CFG_DFLT_AGR_MOUNT_FWD;
+    d->float_conf.agr_mount_offset = CFG_DFLT_AGR_MOUNT_OFFSET;
+    d->float_conf.agr_range_bias = CFG_DFLT_AGR_RANGE_BIAS;
+    d->float_conf.agr_lag_ms = CFG_DFLT_AGR_LAG_MS;
     d->float_conf.agr_strength_up = CFG_DFLT_AGR_STRENGTH_UP;
     d->float_conf.agr_strength_down = CFG_DFLT_AGR_STRENGTH_DOWN;
-    d->float_conf.agr_angle_limit = CFG_DFLT_AGR_ANGLE_LIMIT;
+    d->float_conf.agr_angle_limit_up = CFG_DFLT_AGR_ANGLE_LIMIT_UP;
+    d->float_conf.agr_angle_limit_down = CFG_DFLT_AGR_ANGLE_LIMIT_DOWN;
     d->float_conf.agr_taper_erpm = CFG_DFLT_AGR_TAPER_ERPM;
-    d->float_conf.agr_can_id = CFG_DFLT_AGR_CAN_ID;
-    d->float_conf.agr_mount_offset = CFG_DFLT_AGR_MOUNT_OFFSET;
-    d->float_conf.agr_quality_on = CFG_DFLT_AGR_QUALITY_ON;
-    d->float_conf.agr_quality_off = CFG_DFLT_AGR_QUALITY_OFF;
+    d->float_conf.agr_sight_on = CFG_DFLT_AGR_SIGHT_ON;
+    d->float_conf.agr_sight_off = CFG_DFLT_AGR_SIGHT_OFF;
     d->float_conf.agr_fade_rate = CFG_DFLT_AGR_FADE_RATE;
+    d->float_conf.agr_reverse_fade_m = CFG_DFLT_AGR_REVERSE_FADE_M;
     d->float_conf.agr_filter = CFG_DFLT_AGR_FILTER;
     d->float_conf.agr_rate_limit = CFG_DFLT_AGR_RATE_LIMIT;
+    d->float_conf.agr_can_id = CFG_DFLT_AGR_CAN_ID;
 
     d->float_conf.startup_pitch_tolerance = CFG_DFLT_STARTUP_PITCH_TOLERANCE;
     d->float_conf.startup_roll_tolerance = CFG_DFLT_STARTUP_ROLL_TOLERANCE;
@@ -2719,8 +2723,6 @@ static bool can_sid_callback(uint32_t id, uint8_t *data, uint8_t len) {
     return false;
 }
 
-#define AGR_CAL_SAMPLES (2 * MAIN_THREAD_FREQ)  // ~2 s at the main loop rate
-
 // Hand-rolled: strtof drags in newlib's strtod (~10 KB + heap/syscall stubs)
 // which overflows this freestanding package's MEM region.
 static float agr_parse_float(const char *s) {
@@ -2761,62 +2763,24 @@ static void terminal_agr_sim(int argc, const char **argv) {
         VESC_IF->printf("AGR sim: off (real CAN input resumes)\n");
         return;
     }
-    if (argc < 3) {
-        VESC_IF->printf("Usage: agr_sim <angle_deg> <quality_0_to_1> | agr_sim off\n");
+    if (argc < 2) {
+        VESC_IF->printf("Usage: agr_sim <grade_pct> | agr_sim off\n");
         return;
     }
-    d->agr.sim_surface_angle = agr_parse_float(argv[1]);
-    d->agr.sim_quality = clampf(agr_parse_float(argv[2]), 0.0f, 1.0f);
+    float pct = agr_parse_float(argv[1]);
+    d->agr.sim_grade = tanf(pct * 0.01f);
     d->agr.sim_active = true;
-    VESC_IF->printf(
-        "AGR sim: angle=%.2f deg quality=%.2f\n",
-        (double) d->agr.sim_surface_angle,
-        (double) d->agr.sim_quality
-    );
+    VESC_IF->printf("AGR sim: grade=%.1f%% (slope %.3f)\n", (double) pct, (double) d->agr.sim_grade);
 }
 
 static void terminal_agr_cal(int argc, const char **argv) {
     unused(argc);
     unused(argv);
-    Data *d = (Data *) ARG;
-    if (!d->agr.trusted) {
-        VESC_IF->printf(
-            "AGR cal: refused -- sensor not trusted (quality %.2f). Flat ground, live sensor.\n",
-            (double) d->agr.quality
-        );
-        return;
-    }
-    if (d->motor.abs_erpm > 100) {
-        VESC_IF->printf("AGR cal: refused -- board must be stationary (erpm %.0f).\n", (double) d->motor.abs_erpm);
-        return;
-    }
-    d->agr_cal_accum = 0.0f;
-    d->agr_cal_remaining = AGR_CAL_SAMPLES;
-    VESC_IF->printf("AGR cal: sampling %d frames (~2 s), keep the ground flat...\n", AGR_CAL_SAMPLES);
+    VESC_IF->printf("agr_cal: arriving in the next commit\n");
 }
 
-// Called every main-loop tick; accumulates surface_angle + pitch while a
-// calibration is armed, then writes the negated mean into agr_mount_offset.
 static void agr_cal_tick(Data *d) {
-    if (d->agr_cal_remaining <= 0) {
-        return;
-    }
-    if (!d->agr.trusted) {
-        d->agr_cal_remaining = 0;
-        log_msg("AGR cal: aborted -- sensor lost trust mid-sample.");
-        return;
-    }
-    d->agr_cal_accum += d->agr.surface_angle + d->imu.pitch;
-    if (--d->agr_cal_remaining == 0) {
-        float old = d->float_conf.agr_mount_offset;
-        d->float_conf.agr_mount_offset = -d->agr_cal_accum / AGR_CAL_SAMPLES;
-        write_cfg_to_eeprom(d);
-        log_msg(
-            "AGR cal: mount offset %.2f -> %.2f deg (saved).",
-            (double) old,
-            (double) d->float_conf.agr_mount_offset
-        );
-    }
+    unused(d);
 }
 
 INIT_FUN(lib_info *info) {
