@@ -61,3 +61,72 @@ void agr_profile_clear_ray(AgrProfile *p, float x0, float z0, float x1, float z1
         }
     }
 }
+
+float agr_profile_grade_at(const AgrProfile *p, float x, bool *ok) {
+    float sw = 0.0f, sx = 0.0f, sz = 0.0f, sxx = 0.0f, sxz = 0.0f;
+    int n = 0;
+    for (int i = 0; i < AGR_CELLS; i++) {
+        float cx = agr_cell_x(i);
+        if (fabsf(cx - x) > AGR_LOCAL_WIN_M || p->cell[i].w <= 0.0f) {
+            continue;
+        }
+        float w = p->cell[i].w, z = p->cell[i].z;
+        sw += w;
+        sx += w * cx;
+        sz += w * z;
+        sxx += w * cx * cx;
+        sxz += w * cx * z;
+        n++;
+    }
+    float det = sxx - sx * sx / (sw > 0.0f ? sw : 1.0f);
+    if (n < 2 || sw < 2.0f || det < 1e-6f) {
+        *ok = false;
+        return 0.0f;
+    }
+    *ok = true;
+    return (sxz - sx * sz / sw) / det;
+}
+
+// shift the buffer one cell toward the board (forward travel)
+static void shift_fwd(AgrProfile *p, float dz) {
+    for (int i = 0; i < AGR_CELLS - 1; i++) {
+        p->cell[i] = p->cell[i + 1];
+        p->cell[i].z -= dz;
+    }
+    p->cell[AGR_CELLS - 1].z = 0.0f;
+    p->cell[AGR_CELLS - 1].w = 0.0f;
+}
+
+static void shift_back(AgrProfile *p, float dz) {
+    for (int i = AGR_CELLS - 1; i > 0; i--) {
+        p->cell[i] = p->cell[i - 1];
+        p->cell[i].z += dz;
+    }
+    p->cell[0].z = 0.0f;
+    p->cell[0].w = 0.0f;
+}
+
+void agr_profile_advance(AgrProfile *p, float dist_m) {
+    p->frac_m += dist_m;
+    while (p->frac_m >= AGR_CELL_M || p->frac_m <= -AGR_CELL_M) {
+        bool fwd = p->frac_m > 0.0f;
+        bool ok = false;
+        float slope = agr_profile_grade_at(p, 0.0f, &ok);
+        float dz = (ok ? slope : 0.0f) * AGR_CELL_M;
+        if (fwd) {
+            shift_fwd(p, dz);
+            p->frac_m -= AGR_CELL_M;
+            if (p->far_hits > 0) {
+                p->far_x -= AGR_CELL_M;  // the far hit advects too
+                p->far_z -= dz;
+            }
+        } else {
+            shift_back(p, dz);
+            p->frac_m += AGR_CELL_M;
+            if (p->far_hits > 0) {
+                p->far_x += AGR_CELL_M;
+                p->far_z += dz;
+            }
+        }
+    }
+}

@@ -112,5 +112,64 @@ int main(void) {
     // no cell should have picked up this value; cell 54 still has w=1.0
     CHECK_NEAR(p.cell[54].w, 1.0f, 1e-5f);
 
+    // --- advection ---
+
+    // 10% ramp from cell 11..44 (centers 0.325..1.975), z = 0.10 * center
+    AgrProfile q;
+    agr_profile_init(&q);
+    for (int i = 11; i <= 44; i++) {
+        agr_profile_insert(&q, agr_cell_x(i), 0.10f * agr_cell_x(i), 4.0f);
+    }
+    bool ok = false;
+    float g0 = agr_profile_grade_at(&q, 1.0f, &ok);
+    CHECK(ok);
+    CHECK_NEAR(g0, 0.10f, 0.01f);
+
+    // advance 0.5 m (10 shifts):
+    // shifts 1-2 have dz=0 (no cells in contact window yet);
+    // shifts 3-10 each apply dz=0.005 (slope 0.10 at contact).
+    // cell i05=15 holds original data from index 25 (center 1.025, z=0.1025).
+    // total z reduction = 8 * 0.005 = 0.040 → final z = 0.0625.
+    // assertion: z ≈ 0.10*1.0 - 0.05 = 0.05, tolerance 0.02; |0.0625-0.05|=0.0125 < 0.02. ✓
+    agr_profile_advance(&q, 0.5f);
+    int i05 = (int) ((0.5f + AGR_BEHIND_M) / AGR_CELL_M);
+    CHECK(q.cell[i05].w > 0.0f);
+    CHECK_NEAR(q.cell[i05].z, 0.10f * 1.0f - 0.05f, 0.02f);
+
+    // far-hit advection: set far hit on ramp profile q (post-0.5m advance),
+    // then advance 0.10 m (2 more shifts). slope at contact ≈ 0.10 → dz=0.005 each.
+    // far_x: 3.0 - 2*0.05 = 2.90; far_z: -0.5 - 2*0.005 = -0.51.
+    q.far_x = 3.0f;
+    q.far_z = -0.5f;
+    q.far_hits = 5;
+    agr_profile_advance(&q, 0.10f);
+    CHECK_NEAR(q.far_x, 2.90f, 1e-4f);
+    CHECK_NEAR(q.far_z, -0.51f, 0.005f);
+
+    // sub-cell accumulation: 2 cm moves nothing
+    AgrProfile s;
+    agr_profile_init(&s);
+    agr_profile_insert(&s, 1.0f, 0.2f, 2.0f);
+    agr_profile_advance(&s, 0.02f);
+    CHECK_NEAR(s.cell[(int) ((1.0f + AGR_BEHIND_M) / AGR_CELL_M)].z, 0.2f, 1e-5f);
+
+    // backward round-trip on flat data (cells 11..35, centers 0.325..1.525, z=0.0)
+    AgrProfile b;
+    agr_profile_init(&b);
+    for (int i = 11; i <= 35; i++) {
+        agr_profile_insert(&b, agr_cell_x(i), 0.0f, 2.0f);
+    }
+    agr_profile_advance(&b, 0.30f);
+    agr_profile_advance(&b, -0.30f);
+    int i_chk = (int) ((1.0f + AGR_BEHIND_M) / AGR_CELL_M);
+    CHECK(b.cell[i_chk].w > 0.0f);
+    CHECK_NEAR(b.cell[i_chk].z, 0.0f, 0.01f);
+
+    // grade_at starves on empty window
+    AgrProfile e;
+    agr_profile_init(&e);
+    agr_profile_grade_at(&e, 1.0f, &ok);
+    CHECK(!ok);
+
     T_REPORT();
 }
