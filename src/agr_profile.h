@@ -21,6 +21,7 @@
 #define AGR_FIT_MIN_W 6.0f
 #define AGR_FIT_MIN_SPAN 0.30f
 #define AGR_LOCAL_WIN_M 0.30f
+#define AGR_CHORD_STALE_SHIFTS 6  // 0.30 m without a fresh near sample → fall back to grade_at
 
 typedef struct {
     float z;  // height above the (current) contact plane, m
@@ -32,6 +33,8 @@ typedef struct {
     float frac_m;             // sub-cell odometry accumulator
     float far_x, far_z;       // beyond-horizon hit track (virtual fit point)
     uint8_t far_hits;         // consecutive consistent far hits
+    float chord_x, chord_z;   // freshest near sample; chord from contact drives advection dz
+    uint8_t chord_age;        // shifts since refresh; 255 = none
 } AgrProfile;
 
 typedef struct {

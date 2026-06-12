@@ -125,11 +125,9 @@ int main(void) {
     CHECK(ok);
     CHECK_NEAR(g0, 0.10f, 0.01f);
 
-    // advance 0.5 m: 9 shifts fire (float remainder); converges to z=0.0625, within tolerance.
-    // shifts 1-2 have dz=0 (no cells in contact window yet);
-    // shifts 3-9 each apply dz=0.005 (slope 0.10 at contact).
-    // cell i05=15 holds original data from index 25 (center 1.025, z=0.1025).
-    // total z reduction = 7 * 0.005 = 0.035 → final z ≈ 0.0675; tolerance 0.02 passes.
+    // advance 0.5 m: 9 shifts fire (float remainder). chord = last insert (1.975, 0.1975),
+    // slope 0.10 → dz=0.005 from shift 1 (no dead zone). cell i05=15 holds original data
+    // (center 1.025, z=0.1025); 9 shifts × 0.005 = 0.045 reduction → z ≈ 0.0525.
     // assertion: z ≈ 0.10*1.0 - 0.05 = 0.05, tolerance 0.02; result within tolerance. ✓
     agr_profile_advance(&q, 0.5f);
     int i05 = (int) ((0.5f + AGR_BEHIND_M) / AGR_CELL_M);

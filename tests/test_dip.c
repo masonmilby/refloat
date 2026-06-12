@@ -1,29 +1,29 @@
 // forks/refloat/tests/test_dip.c — the spec's benchmark scenario, synthetic
 //
-// Design finding: on a UNIFORM slope the profile's advance() z-correction cannot
-// bootstrap from a single-point beam (all hits land at the same locate-x on a
-// uniform grade), so fit.slope ≈ 0 during steady-state descent. The AGR therefore
-// acts as a grade-change detector, not a steady-state grade tracker. Consequences:
+// Chord-driven advection gives sustained-grade hold: on a uniform slope the
+// advection height-decomposition uses the chord from the contact patch (0,0) to
+// the freshest near sample (x_f, z_f), whose slope z_f/x_f is the true grade —
+// so advected cells stay terrain-true and the fit reads the real slope. The AGR
+// now both tracks steady grade AND leads grade changes. The pinned signature:
 //
-//   • No negative (nose-down) setpoint during uniform descent — the spec's
-//     min_descend_sp < -0.5 assertion does not match the implementation.
+//   1. Steady descent: nose-down setpoint converges to ≈ -0.3*atan(0.20)*RAD2DEG
+//      ≈ -3.39° on the uniform -20% slope (min_descend_sp well below -0.5).
+//   2. Unwind: as the wheel nears the flat, the fit mixes downhill-under-wheel
+//      with flat-ahead, so the setpoint unwinds OFF the descent floor early
+//      (sp_at[0], captured at wx=-0.5 while the board is still descending, is
+//      meaningfully above min_descend_sp).
+//   3. Flat: setpoint settles near 0.
+//   4. Pre-tilt: positive nose-up command builds as the upslope wall fills the
+//      window, and keeps building (sp_at[2] > sp_at[1] + 0.3, sp_at[2] > 0.5).
+//   5. Fade holds at 1.0 across both dip corners — the geometric kink residual at
+//      a 20% corner peaks ≈ 0.021 m, under the 0.03 m fit-trust ceiling.
 //
-//   • At the slope→flat corner the fit residual spikes to ~0.024 m (above the
-//     0.03 m ceiling) for ~0.5 m of travel as old slope-data cells remain in the
-//     window, causing fade to dip to ~0.92 before recovering by wx ≈ 1.2 m.
-//
-//   • On the upslope (wx > 4.5 m) the profile loses all cell data (beam hits
-//     only the now-close wall at z ≈ +0.22, the advance cannot repopulate cells
-//     behind x=0, and eventually all cells are evicted by clear_ray), so fit
-//     becomes invalid and fade drops toward 0. This is outside the assertion window.
-//
-// What IS pinned here (the actual pipelined signature):
-//   1. Setpoint stays near 0 during steady-state descent (no spurious correction).
-//   2. Positive pre-tilt starts building while the board is STILL DESCENDING
-//      (wx ≈ −0.9 m), before the wheel reaches the flat — the sensor sees the
-//      upcoming grade-change before the board does.
-//   3. Nose-up command keeps building as the upslope wall fills the window.
-//   4. Fade recovers to ≥ 0.99 after the corner transient, well before wx = 3.9 m.
+// Beyond wx ≈ 4.55 m the profile drains: on the +20% wall the deck pitches up
+// +11.3°, the beam depression below the deck is 13°, so world depression is only
+// ≈1.7° — below AGR_MIN_DEPRESSION_RAD (2°). agr_locate rejects every return as
+// near-horizon, no new cells are inserted, and the buffer drains as it shifts.
+// This is a sensor-geometry limit (not an advection one); the canonical window
+// ends where the fit is still valid (wx < 4.5).
 //
 #include "agr_control.h"
 #include "agr_geometry.h"
@@ -31,8 +31,10 @@
 #include "agr_profile.h"
 #include "t.h"
 
-// terrain: -20% down for x<0, flat 0..4 m, +20% up after (world x)
-static float terrain_z(float x) {
+typedef float (*TerrainFn)(float x);
+
+// dip: -20% down for x<0, flat 0..4 m, +20% up after (world x)
+static float terrain_dip(float x) {
     if (x < 0.0f) {
         return -0.20f * x;  // descending toward the flat at z=0
     }
@@ -46,19 +48,56 @@ static float terrain_slope(float x) {
     return x < 0.0f ? -0.20f : (x < 4.0f ? 0.0f : 0.20f);
 }
 
-// cast the sensor ray from world position against terrain_z (linear search)
-static float cast_range(const AgrGeometry *g, float wx, float pitch) {
+// uniform -20% everywhere — for the sustained-grade-hold sections
+static float terrain_down20(float x) {
+    return -0.20f * x;
+}
+
+// cast the sensor ray from world position against the given terrain (linear search)
+static float cast_range(TerrainFn tz, const AgrGeometry *g, float wx, float pitch) {
     float a = g->mount_height - AGR_WHEEL_RADIUS_M;
     float sx = wx + g->mount_fwd * cosf(pitch) - a * sinf(pitch);
-    float sz = terrain_z(wx) + AGR_WHEEL_RADIUS_M + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
+    float sz = tz(wx) + AGR_WHEEL_RADIUS_M + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
     float delta = g->mount_angle - pitch;
     float dx = cosf(delta), dz = -sinf(delta);
     for (float t = 0.05f; t < 12.0f; t += 0.005f) {
-        if (sz + t * dz <= terrain_z(sx + t * dx)) {
+        if (sz + t * dz <= tz(sx + t * dx)) {
             return t;
         }
     }
     return -1.0f;  // no return
+}
+
+// one full pipeline tick at a fixed pitch; advances the profile by dd, conditions output
+static void pipeline_tick(
+    TerrainFn tz, const AgrGeometry *geo, AgrProfile *prof, AgrTrust *trust, AgrCond *cond,
+    const AgrTuning *cfg, float wx, float pitch, float dd, float v, float dt, int tick
+) {
+    if (tick % 2 == 0) {
+        float r = cast_range(tz, geo, wx, pitch);
+        bool valid = r > 0.0f;
+        agr_trust_sample(trust, valid);
+        if (valid) {
+            AgrGroundPoint pt = agr_locate(geo, pitch, r);
+            if (pt.ok) {
+                if (pt.x <= AGR_AHEAD_M) {
+                    float a = geo->mount_height - AGR_WHEEL_RADIUS_M;
+                    float sx0 = geo->mount_fwd * cosf(pitch) - a * sinf(pitch);
+                    float sz0 =
+                        AGR_WHEEL_RADIUS_M + geo->mount_fwd * sinf(pitch) + a * cosf(pitch);
+                    agr_profile_clear_ray(prof, sx0, sz0, pt.x, pt.z);
+                    agr_profile_insert(prof, pt.x, pt.z, 1.0f);
+                } else {
+                    agr_profile_far_hit(prof, pt.x, pt.z);
+                }
+            }
+        }
+    }
+    agr_profile_advance(prof, dd);
+    AgrFit fit = agr_profile_fit(prof);
+    agr_trust_update(trust, &fit, false, v * 1000.0f, dd, cfg, dt);
+    float raw = fit.valid ? agr_law(&fit, trust->dir_forward, 5000.0f, cfg) : 0.0f;
+    agr_cond_update(cond, raw, trust->fade, cfg, dt);
 }
 
 int main(void) {
@@ -84,20 +123,14 @@ int main(void) {
     float wx = -8.0f;                   // world x; flat starts at 0, wall base at 4
     float prev_dist = 0.0f, dist = 0.0f;
 
-    // Deviation 1: bool captured[] instead of sp_at[i]==0.0f sentinel.
-    // Original: sp_at[1] is sampled at wx=2.0 (mid-flat) where setpoint can be near
-    // any positive value; using == 0.0f as a sentinel would miss a genuine zero.
-    // We also shift sp_at[0] from wx=-1.5 to wx=-0.5: the pre-tilt signal first
-    // appears at wx ≈ −0.9 (when the flat enters the beam window while the board is
-    // still on the descent), so the original wx=-1.5 capture always reads 0.
+    // captured setpoints across the dip
     float sp_at[3] = {0.0f, 0.0f, 0.0f};
     float fade_at_sp2 = 0.0f;
     bool captured[3] = {false, false, false};
-
-    // Deviation 2: track steady-state descent quietness (replaces min_descend_sp).
-    // On uniform slope the profile sees slope ≈ 0 → no correction.  This is the
-    // intended grade-change-only behavior; we pin it as a quietness bound.
-    float quiet_max = 0.0f;
+    // most-negative setpoint during steady descent (board on the uniform slope)
+    float min_descend_sp = 0.0f;
+    // worst geometric residual seen around the two dip corners
+    float max_corner_res = 0.0f;
 
     int tick = 0;
 
@@ -112,7 +145,7 @@ int main(void) {
 
         // 250 Hz sensor: every other tick
         if (tick % 2 == 0) {
-            float r = cast_range(&geo, wx, pitch);
+            float r = cast_range(terrain_dip, &geo, wx, pitch);
             bool valid = r > 0.0f;
             agr_trust_sample(&trust, valid);
             if (valid) {
@@ -137,16 +170,20 @@ int main(void) {
         float raw = fit.valid ? agr_law(&fit, trust.dir_forward, 5000.0f, &cfg) : 0.0f;
         agr_cond_update(&cond, raw, trust.fade, &cfg, dt);
 
-        // steady descent quietness window: -7 to -2 m (board on slope, far from corners)
-        if (wx > -7.0f && wx < -2.0f) {
-            float abssp = cond.setpoint < 0.0f ? -cond.setpoint : cond.setpoint;
-            if (abssp > quiet_max) {
-                quiet_max = abssp;
-            }
+        // steady descent: most-negative setpoint while the board is on the slope,
+        // away from the corners (wx in -7..-2). Sustained-grade hold lives here.
+        if (wx > -7.0f && wx < -2.0f && cond.setpoint < min_descend_sp) {
+            min_descend_sp = cond.setpoint;
         }
 
-        // sp_at[0]: first tick where board is still descending but flat is in beam window
-        // (wx ≈ -0.5 m, pitch still ≈ -11°, beam hitting flat terrain ahead)
+        // worst residual around the two 20% corners (slope→flat near 0, flat→up near 4)
+        if (fit.valid && ((wx > -0.5f && wx < 0.9f) || (wx > 3.5f && wx < 4.5f)) &&
+            fit.residual > max_corner_res) {
+            max_corner_res = fit.residual;
+        }
+
+        // sp_at[0]: the board is still descending (pitch ≈ -11°) but the flat is
+        // already in the beam — the setpoint has begun unwinding off the descent floor.
         if (wx >= -0.5f && !captured[0]) {
             sp_at[0] = cond.setpoint;
             captured[0] = true;
@@ -165,17 +202,78 @@ int main(void) {
         tick++;
     }
 
-    // steady descent: no spurious correction on uniform grade (grade-change-only design)
-    CHECK(quiet_max < 0.1f);
-    // pre-tilt: positive nose-up command appears while board is STILL DESCENDING
-    // (board at wx=-0.5 still has pitch=-11.3°; beam already sees the upcoming flat)
-    CHECK(sp_at[0] > 0.2f);
+    // steady-descent hold: a real nose-down command builds on the uniform grade
+    // (expect ≈ -3.4°; -0.5 is a conservative floor)
+    CHECK(min_descend_sp < -0.5f);
+    // unwind: as the flat enters the beam the setpoint comes back off the descent
+    // floor while the board is STILL descending
+    CHECK(sp_at[0] > min_descend_sp + 0.2f);
     // pre-tilt keeps building as the upslope wall fills the fit window
     CHECK(sp_at[2] > sp_at[1] + 0.3f);
     CHECK(sp_at[2] > 0.5f);
-    // trust recovered after the corner transient by the time we sample at wx=3.9
-    // (the corner residual spike — fit residual ≈ 0.024 m at wx ≈ 0.4 m — trips
-    // fit_ok briefly, dropping fade to ~0.92; fade recovers to 1.0 by wx ≈ 1.2 m)
+    // the 20% corner residual stays under the fit ceiling, so trust never dips
+    CHECK(max_corner_res < AGR_RESIDUAL_CEIL_M);
     CHECK(fade_at_sp2 >= 0.99f);
+
+    // ---- sustained grade hold ----
+    // fresh pipeline, uniform -20% terrain. fit reads the true grade; the setpoint
+    // converges to the law's steady value. (Cold start: the fade ramp gates the
+    // setpoint, so it reaches steady value at ≈4 m, not 3 m — the slope is locked
+    // in by 3 m and we settle the run to ≈5.5 m before checking the magnitude.)
+    {
+        AgrProfile sp_prof;
+        AgrTrust sp_trust;
+        AgrCond sp_cond;
+        agr_profile_init(&sp_prof);
+        agr_trust_init(&sp_trust);
+        agr_cond_init(&sp_cond);
+        agr_cond_configure(&sp_cond, 10.0f, 500.0f);
+
+        const float gpitch = atanf(-0.20f);
+        float gwx = -6.0f, gprev = 0.0f, gdist = 0.0f, traveled = 0.0f;
+        int gtick = 0;
+        AgrFit slope_at_3m = {0};
+        bool got_3m = false;
+        const float expect_sp = -0.3f * atanf(0.20f) * AGR_RAD2DEG;  // ≈ -3.39
+
+        while (traveled < 5.5f) {
+            float ds = v * dt * cosf(gpitch);
+            gwx += ds;
+            traveled += ds;
+            gdist += v * dt;
+            float dd = gdist - gprev;
+            gprev = gdist;
+            pipeline_tick(
+                terrain_down20, &geo, &sp_prof, &sp_trust, &sp_cond, &cfg, gwx, gpitch, dd, v, dt,
+                gtick
+            );
+            if (!got_3m && traveled >= 3.0f) {
+                slope_at_3m = agr_profile_fit(&sp_prof);
+                got_3m = true;
+            }
+            gtick++;
+        }
+        // at 3 m: fit is valid and reads the true grade
+        CHECK(slope_at_3m.valid);
+        CHECK_NEAR(slope_at_3m.slope, -0.20f, 0.02f);
+        // after the run settles: setpoint at the law's steady value
+        CHECK_NEAR(sp_cond.setpoint, expect_sp, 0.3f);
+
+        // ---- stop-hold on grade ----
+        // continue the same run but stop advancing (dd=0), sensor + ticks still
+        // running, still on the slope: the held offset must not drift.
+        float sp_before = sp_cond.setpoint;
+        int stop_ticks = (int) (1.0f / dt);  // 1 s
+        for (int k = 0; k < stop_ticks; k++) {
+            pipeline_tick(
+                terrain_down20, &geo, &sp_prof, &sp_trust, &sp_cond, &cfg, gwx, gpitch, 0.0f, v, dt,
+                gtick
+            );
+            gtick++;
+        }
+        CHECK_NEAR(sp_cond.setpoint, sp_before, 0.1f);
+        CHECK_NEAR(sp_trust.fade, 1.0f, 1e-3f);
+    }
+
     T_REPORT();
 }

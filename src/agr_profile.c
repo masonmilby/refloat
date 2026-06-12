@@ -10,6 +10,9 @@ void agr_profile_init(AgrProfile *p) {
     p->far_x = 0.0f;
     p->far_z = 0.0f;
     p->far_hits = 0;
+    p->chord_x = 0.0f;
+    p->chord_z = 0.0f;
+    p->chord_age = 255;
 }
 
 static int cell_index(float x) {
@@ -42,6 +45,13 @@ void agr_profile_insert(AgrProfile *p, float x, float z, float w) {
     float tw = c->w + w;
     c->z = (c->z * c->w + z * w) / tw;
     c->w = tw > AGR_CELL_W_CAP ? AGR_CELL_W_CAP : tw;
+    // chord from contact (0,0) to this fresh near sample drives advection dz;
+    // skip very-near/behind samples where z/x is noise-amplified. far hits never reach here.
+    if (x > 0.20f) {
+        p->chord_x = x;
+        p->chord_z = z;
+        p->chord_age = 0;
+    }
 }
 
 void agr_profile_clear_ray(AgrProfile *p, float x0, float z0, float x1, float z1) {
@@ -201,9 +211,16 @@ void agr_profile_advance(AgrProfile *p, float dist_m) {
     p->frac_m += dist_m;
     while (p->frac_m >= AGR_CELL_M || p->frac_m <= -AGR_CELL_M) {
         bool fwd = p->frac_m > 0.0f;
-        bool ok = false;
-        float slope = agr_profile_grade_at(p, 0.0f, &ok);
-        float dz = (ok ? slope : 0.0f) * AGR_CELL_M;
+        // chord slope (contact→fresh near sample) is instantaneous and terrain-true
+        // on uniform grade; grade_at is the rank-deficient fallback when the chord is stale
+        float dz;
+        if (p->chord_age < AGR_CHORD_STALE_SHIFTS && p->chord_x > 0.20f) {
+            dz = (p->chord_z / p->chord_x) * AGR_CELL_M;
+        } else {
+            bool ok = false;
+            float slope = agr_profile_grade_at(p, 0.0f, &ok);
+            dz = (ok ? slope : 0.0f) * AGR_CELL_M;
+        }
         if (fwd) {
             shift_fwd(p, dz);
             p->frac_m -= AGR_CELL_M;
@@ -211,6 +228,8 @@ void agr_profile_advance(AgrProfile *p, float dist_m) {
                 p->far_x -= AGR_CELL_M;  // the far hit advects too
                 p->far_z -= dz;
             }
+            p->chord_x -= AGR_CELL_M;  // chord point advects with the buffer
+            p->chord_z -= dz;
         } else {
             shift_back(p, dz);
             p->frac_m += AGR_CELL_M;
@@ -218,6 +237,11 @@ void agr_profile_advance(AgrProfile *p, float dist_m) {
                 p->far_x += AGR_CELL_M;
                 p->far_z += dz;
             }
+            p->chord_x += AGR_CELL_M;
+            p->chord_z += dz;
+        }
+        if (p->chord_age < 255) {
+            p->chord_age++;
         }
         // a far point advected out of the trusted band carries a stale z — drop it
         if (p->far_hits > 0 && (p->far_x <= AGR_AHEAD_M || p->far_x > AGR_FAR_MAX_M)) {
