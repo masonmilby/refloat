@@ -2,6 +2,7 @@
 CC ?= gcc
 CFLAGS := -Wall -Wextra -Werror -std=c11 -g -I../src
 CORE_SRC :=
+CORE_SRC += ../src/agr_geometry.c
 TESTS := $(patsubst %.c,%,$(wildcard test_*.c))
 
 all: $(TESTS)
