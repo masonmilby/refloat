@@ -53,6 +53,8 @@ void agr_trust_update(
 // raw law output (deg) from the fit; fit must be valid (caller gates)
 float agr_law(const AgrFit *fit, bool dir_forward, float abs_erpm, const AgrTuning *cfg);
 void agr_cond_init(AgrCond *c);
+// clears state only (EMA value, setpoint) — the configured filter survives
+void agr_cond_reset(AgrCond *c);
 void agr_cond_configure(AgrCond *c, float cutoff_hz, float frequency);
 void agr_cond_update(AgrCond *c, float raw_deg, float fade, const AgrTuning *cfg, float dt);
 void agr_cond_winddown(AgrCond *c);

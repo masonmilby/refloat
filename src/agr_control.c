@@ -105,6 +105,11 @@ void agr_cond_init(AgrCond *c) {
     c->setpoint = 0.0f;
 }
 
+void agr_cond_reset(AgrCond *c) {
+    ema_reset(&c->ema, 0.0f);
+    c->setpoint = 0.0f;
+}
+
 void agr_cond_configure(AgrCond *c, float cutoff_hz, float frequency) {
     ema_configure(&c->ema, cutoff_hz, frequency);
 }

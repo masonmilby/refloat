@@ -162,6 +162,19 @@ int main(void) {
     agr_cond_update(&cond, 100.0f, 1.0f, &cfg, dt);
     CHECK(cond.setpoint <= cfg.rate_limit * dt + 1e-5f);  // rate limit caps the step
 
+    // engage reset clears state but preserves the configured filter
+    agr_cond_init(&cond);
+    agr_cond_configure(&cond, 10.0f, 500.0f);
+    for (int i = 0; i < 500; i++) {
+        agr_cond_update(&cond, 6.0f, 1.0f, &cfg, dt);
+    }
+    agr_cond_reset(&cond);
+    CHECK_NEAR(cond.setpoint, 0.0f, 1e-6f);
+    for (int i = 0; i < 500; i++) {
+        agr_cond_update(&cond, 6.0f, 1.0f, &cfg, dt);
+    }
+    CHECK_NEAR(cond.setpoint, 6.0f, 0.05f);
+
     // drift bound: rate limit caps any estimator walk
     // raw_deg steps 0 -> -4 instantly at fade=1; after 50 ticks assert |moved| <= 1.5 + eps
     agr_cond_init(&cond);
