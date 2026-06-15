@@ -2816,6 +2816,7 @@ static void terminal_agr_cal(int argc, const char **argv) {
             return;
         }
         agr_cal_sweep_init(&a->cal_sweep);
+        a->cal_net_m = 0.0f;
         a->cal_mode = AGR_CAL_SWEEPING;
         VESC_IF->printf(
             "sweep armed -- tip NOSE-DOWN past 20 deg, then re-run 'agr_cal sweep' to fit\n"
@@ -2878,10 +2879,17 @@ static void terminal_agr_cal(int argc, const char **argv) {
         }
     } else if (strcmp(argv[1], "status") == 0) {
         VESC_IF->printf(
-            "mode=%d gates=%d fade=%.2f g_cmd=%.2f resid=%.1fmm valid=%.0f%% trim=%.2f\n",
-            (int) a->cal_mode, (int) a->gates_f, (double) a->fade, (double) a->g_cmd,
-            (double) (a->fit_residual * 1000.0f), (double) (a->valid_fraction * 100.0f),
-            (double) a->trim_deg
+            "mode=%d gates=%d dir=%c fade=%.2f g_cmd=%.2f resid=%.1fmm valid=%.0f%% trim=%.2f\n",
+            (int) a->cal_mode, (int) a->gates_f, a->trust.dir_forward ? 'F' : 'R',
+            (double) a->fade, (double) a->g_cmd, (double) (a->fit_residual * 1000.0f),
+            (double) (a->valid_fraction * 100.0f), (double) a->trim_deg
+        );
+        VESC_IF->printf(
+            "law: str=%.2f/%.2f lim=%.1f/%.1f taper=%.0f rl=%.1f raw=%.2f ema=%.2f sp=%.2f\n",
+            (double) a->tuning.strength_up, (double) a->tuning.strength_down,
+            (double) a->tuning.angle_limit_up, (double) a->tuning.angle_limit_down,
+            (double) a->tuning.taper_erpm, (double) a->tuning.rate_limit,
+            (double) a->law_raw, (double) a->cond.ema.value, (double) a->cond.setpoint
         );
     } else {
         VESC_IF->printf("Usage: agr_cal <sweep|tau|apply|dump|status>\n");

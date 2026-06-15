@@ -50,7 +50,7 @@ void agr_init(AGR *agr) {
 void agr_reset(AGR *agr) {
     agr_profile_init(&agr->profile);
     agr_trust_init(&agr->trust);
-    agr_cond_init(&agr->cond);
+    agr_cond_reset(&agr->cond);
     agr->fit = (AgrFit){0};
     agr->g_cmd = 0.0f;
     agr->fade = 0.0f;
@@ -59,6 +59,7 @@ void agr_reset(AGR *agr) {
     agr->fit_weight = 0.0f;
     agr->valid_fraction = 0.0f;
     agr->far_chord = 0.0f;
+    agr->law_raw = 0.0f;
     agr->setpoint = 0.0f;
 }
 
@@ -175,9 +176,14 @@ void agr_update(
         dd = 0.0f;  // odometry glitch: a 500 Hz tick can't move 1 m; never feed the profile garbage
     }
 
-    if (agr->cal_mode == AGR_CAL_SWEEPING && motor->abs_erpm > 100) {
-        agr->cal_mode = AGR_CAL_IDLE;
-        log_msg("AGR cal: sweep aborted (board moved)");
+    if (agr->cal_mode == AGR_CAL_SWEEPING) {
+        // net travel, not erpm: a ground-locked pivot reads erpm equal to pitch
+        // rate while the board stays put — the exact motion the sweep asks for
+        agr->cal_net_m += dd;
+        if (fabsf(agr->cal_net_m) > AGR_CAL_ABORT_NET_M) {
+            agr->cal_mode = AGR_CAL_IDLE;
+            log_msg("AGR cal: sweep aborted (board moved)");
+        }
     }
 
     if (agr->sim_active) {
@@ -248,6 +254,7 @@ void agr_update(
     agr->far_chord = agr->profile.far_hits >= AGR_FAR_PERSIST
         ? atanf(agr->profile.far_z / agr->profile.far_x) * AGR_RAD2DEG
         : 0.0f;
+    agr->law_raw = raw;
     agr->setpoint = agr->cond.setpoint;
 }
 

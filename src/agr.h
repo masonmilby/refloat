@@ -34,6 +34,9 @@
 #define AGR_NO_RETURN 0xFFFF
 #define AGR_TIMEOUT_TICKS (SYSTEM_TICK_RATE_HZ / 20)  // 50 ms: silence is loss
 #define AGR_RX_RING 4
+// sweep-abort threshold on net travel: rotor-locked tipping rolls ~±0.1 m and is
+// harmless (flat floor is translation-invariant); riding trips this within 0.3 m
+#define AGR_CAL_ABORT_NET_M 0.3f
 
 typedef struct {
     uint16_t range_mm;
@@ -80,6 +83,7 @@ typedef struct {
 
     // calibration session state
     AgrCalMode cal_mode;
+    float cal_net_m;         // net signed travel since sweep arm
     bool cal_sweep_applied;  // true once a sweep has been applied this boot
     AgrCalSweep cal_sweep;
     AgrTauScan cal_tau;
@@ -94,6 +98,7 @@ typedef struct {
     float fit_weight;
     float valid_fraction;
     float far_chord;  // deg, 0 when inactive
+    float law_raw;    // law output before conditioning, deg
     float setpoint;   // == cond.setpoint
 
     // node health mirrors (diagnostics only — never read in control path)
