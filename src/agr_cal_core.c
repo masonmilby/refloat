@@ -43,24 +43,25 @@ float agr_cal_model(float pitch, float mount_angle, float theta_err, float h, fl
     return zs / sinf(delta) + b;
 }
 
-// solve 4x4 A x = y in place (double precision for numerical stability); returns false if singular
-static bool solve4(double A[4][4], double y[4], float x[4]) {
+// solve 4x4 A x = y in place; expects A Jacobi-scaled to ~unit diagonal (see
+// agr_cal_fit), which keeps float precision sufficient; returns false if singular
+static bool solve4(float A[4][4], float y[4], float x[4]) {
     int idx[4] = {0, 1, 2, 3};
     for (int c = 0; c < 4; c++) {
         int piv = c;
         for (int r = c + 1; r < 4; r++) {
-            if (fabs(A[idx[r]][c]) > fabs(A[idx[piv]][c])) {
+            if (fabsf(A[idx[r]][c]) > fabsf(A[idx[piv]][c])) {
                 piv = r;
             }
         }
         int tmp = idx[c];
         idx[c] = idx[piv];
         idx[piv] = tmp;
-        if (fabs(A[idx[c]][c]) < 1e-12) {
+        if (fabsf(A[idx[c]][c]) < 1e-9f) {
             return false;
         }
         for (int r = c + 1; r < 4; r++) {
-            double m = A[idx[r]][c] / A[idx[c]][c];
+            float m = A[idx[r]][c] / A[idx[c]][c];
             for (int k = c; k < 4; k++) {
                 A[idx[r]][k] -= m * A[idx[c]][k];
             }
@@ -68,11 +69,11 @@ static bool solve4(double A[4][4], double y[4], float x[4]) {
         }
     }
     for (int c = 3; c >= 0; c--) {
-        double acc = y[idx[c]];
+        float acc = y[idx[c]];
         for (int k = c + 1; k < 4; k++) {
             acc -= A[idx[c]][k] * x[k];
         }
-        x[c] = (float) (acc / A[idx[c]][c]);
+        x[c] = acc / A[idx[c]][c];
     }
     return true;
 }
@@ -105,9 +106,8 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad) {
     float prm[4] = {0.175f, 0.35f, 0.0f, 0.0f};
     const float eps[4] = {1e-4f, 1e-4f, 1e-5f, 1e-4f};
     for (int iter = 0; iter < AGR_CAL_GN_ITERS; iter++) {
-        // double precision accumulation to avoid catastrophic cancellation in JtJ
-        double JtJ[4][4] = {{0}};
-        double Jtr[4] = {0};
+        float JtJ[4][4] = {{0}};
+        float Jtr[4] = {0};
         for (int i = 0; i < AGR_CAL_BINS; i++) {
             if (!bin_usable(s, i, mount_angle_cad)) {
                 continue;
@@ -132,15 +132,33 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad) {
             }
             for (int a = 0; a < 4; a++) {
                 for (int c = 0; c < 4; c++) {
-                    JtJ[a][c] += (double) w * J[a] * J[c];
+                    JtJ[a][c] += w * J[a] * J[c];
                 }
-                Jtr[a] += (double) w * J[a] * resid;
+                Jtr[a] += w * J[a] * resid;
             }
         }
-        // Levenberg-Marquardt damping: λ * diag(JtJ) prevents divergence along the
-        // near-null direction that arises from the (θ_err, b) aliasing at limited pitch spans.
+        // Jacobi-scale JtJ to unit diagonal: raw JtJ condition is ~1e9 from the
+        // (θ_err, b) aliasing at limited pitch spans, beyond float. On the scaled
+        // matrix the damping below becomes an absolute eigenvalue floor, bounding
+        // the solved system's condition near 4/0.001 — safely within float.
+        float d[4];
         for (int k = 0; k < 4; k++) {
-            JtJ[k][k] *= 1.001;
+            if (JtJ[k][k] <= 0.0f) {
+                res.status = AGR_CAL_SINGULAR;
+                return res;
+            }
+            d[k] = sqrtf(JtJ[k][k]);
+        }
+        for (int a = 0; a < 4; a++) {
+            for (int c = 0; c < 4; c++) {
+                JtJ[a][c] /= d[a] * d[c];
+            }
+            Jtr[a] /= d[a];
+        }
+        // Levenberg-Marquardt damping: prevents divergence along the near-null
+        // (θ_err, b) direction.
+        for (int k = 0; k < 4; k++) {
+            JtJ[k][k] *= 1.001f;
         }
         float step[4];
         if (!solve4(JtJ, Jtr, step)) {
@@ -148,7 +166,7 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad) {
             return res;
         }
         for (int k = 0; k < 4; k++) {
-            prm[k] += step[k];
+            prm[k] += step[k] / d[k];
         }
     }
     // weighted RMS over used bins (per-bin means)

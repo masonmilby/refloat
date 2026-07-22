@@ -30,7 +30,7 @@ int main(void) {
     CHECK_NEAR(res.mount_height, h, 0.005f);
     CHECK_NEAR(res.mount_fwd, f, 0.015f);
     // θe/b are jointly ill-conditioned over a flat-ground sweep (JtJ condition ~1e9);
-    // double accumulation + light damping handle it; individual recovery is seed-dependent
+    // Jacobi scaling + light damping handle it; individual recovery is seed-dependent
     // but locate-functional accuracy is bounded (see functional-equivalence test below).
     CHECK_NEAR(res.mount_offset_deg, 0.8f, 0.30f);
     CHECK_NEAR(res.range_bias, b, 0.020f);
