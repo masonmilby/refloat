@@ -2725,6 +2725,16 @@ static bool can_sid_callback(uint32_t id, uint8_t *data, uint8_t len) {
     return false;
 }
 
+// Hand-rolled: newlib's optimized strcmp costs ~700 B of flash and these
+// commands only match short literal keywords.
+static bool str_eq(const char *a, const char *b) {
+    while (*a && *a == *b) {
+        a++;
+        b++;
+    }
+    return *a == *b;
+}
+
 // Hand-rolled: strtof drags in newlib's strtod (~10 KB + heap/syscall stubs)
 // which overflows this freestanding package's MEM region.
 static float agr_parse_float(const char *s) {
@@ -2760,7 +2770,7 @@ static float agr_parse_float(const char *s) {
 
 static void terminal_agr_sim(int argc, const char **argv) {
     Data *d = (Data *) ARG;
-    if (argc == 2 && strcmp(argv[1], "off") == 0) {
+    if (argc == 2 && str_eq(argv[1], "off")) {
         d->agr.sim_active = false;
         // discard any stale frames queued while sim was active
         d->agr.rx_tail = d->agr.rx_head;
@@ -2784,7 +2794,7 @@ static void terminal_agr_cal(int argc, const char **argv) {
         VESC_IF->printf("Usage: agr_cal <sweep|tau|apply|dump|status>\n");
         return;
     }
-    if (strcmp(argv[1], "sweep") == 0) {
+    if (str_eq(argv[1], "sweep")) {
         if (a->cal_mode == AGR_CAL_SWEEPING) {
             a->cal_mode = AGR_CAL_IDLE;
             a->cal_result = agr_cal_fit(&a->cal_sweep, d->float_conf.agr_mount_angle * AGR_DEG2RAD);
@@ -2821,7 +2831,7 @@ static void terminal_agr_cal(int argc, const char **argv) {
         VESC_IF->printf(
             "sweep armed -- tip NOSE-DOWN past 20 deg, then re-run 'agr_cal sweep' to fit\n"
         );
-    } else if (strcmp(argv[1], "tau") == 0) {
+    } else if (str_eq(argv[1], "tau")) {
         if (!a->cal_sweep_applied) {
             VESC_IF->printf(
                 "agr_cal tau: refused -- run + apply a sweep first "
@@ -2837,7 +2847,7 @@ static void terminal_agr_cal(int argc, const char **argv) {
         a->cal_tau_ticks = 10 * MAIN_THREAD_FREQ;
         a->cal_mode = AGR_CAL_TAU;
         VESC_IF->printf("rock the board for 10 s...\n");
-    } else if (strcmp(argv[1], "apply") == 0) {
+    } else if (str_eq(argv[1], "apply")) {
         if (a->cal_mode == AGR_CAL_PENDING && a->cal_result.status == AGR_CAL_OK) {
             d->float_conf.agr_mount_height = a->cal_result.mount_height;
             d->float_conf.agr_mount_fwd = a->cal_result.mount_fwd;
@@ -2864,7 +2874,7 @@ static void terminal_agr_cal(int argc, const char **argv) {
         } else {
             VESC_IF->printf("nothing pending\n");
         }
-    } else if (strcmp(argv[1], "dump") == 0) {
+    } else if (str_eq(argv[1], "dump")) {
         VESC_IF->printf("pitch_deg,mean_r_m,n\n");
         for (int i = 0; i < AGR_CAL_BINS; i++) {
             if (a->cal_sweep.bin[i].n == 0) {
@@ -2877,7 +2887,7 @@ static void terminal_agr_cal(int argc, const char **argv) {
                 (unsigned int) a->cal_sweep.bin[i].n
             );
         }
-    } else if (strcmp(argv[1], "status") == 0) {
+    } else if (str_eq(argv[1], "status")) {
         VESC_IF->printf(
             "mode=%d gates=%d dir=%c fade=%.2f g_cmd=%.2f resid=%.1fmm valid=%.0f%% trim=%.2f\n",
             (int) a->cal_mode, (int) a->gates_f, a->trust.dir_forward ? 'F' : 'R',
