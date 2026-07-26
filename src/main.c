@@ -2801,7 +2801,9 @@ static void terminal_agr_cal(int argc, const char **argv) {
     if (str_eq(argv[1], "sweep")) {
         if (a->cal_mode == AGR_CAL_SWEEPING) {
             a->cal_mode = AGR_CAL_IDLE;
-            a->cal_result = agr_cal_fit(&a->cal_sweep, d->float_conf.agr_mount_angle * AGR_DEG2RAD);
+            a->cal_result = agr_cal_fit(
+                &a->cal_sweep, d->float_conf.agr_mount_angle * AGR_DEG2RAD, a->geo.wheel_radius
+            );
             AgrCalResult *r = &a->cal_result;
             VESC_IF->printf(
                 "sweep fit: h=%.3f f=%.3f offset=%.2fdeg bias=%.3f rms=%.1fmm "

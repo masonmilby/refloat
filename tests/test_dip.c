@@ -32,6 +32,8 @@
 #include "agr_profile.h"
 #include "t.h"
 
+#define TEST_WHEEL_RADIUS_M 0.146f
+
 typedef float (*TerrainFn)(float x);
 
 // dip: -20% down for x<0, flat 0..4 m, +20% up after (world x)
@@ -56,9 +58,9 @@ static float terrain_down20(float x) {
 
 // cast the sensor ray from world position against the given terrain (linear search)
 static float cast_range(TerrainFn tz, const AgrGeometry *g, float wx, float pitch) {
-    float a = g->mount_height - AGR_WHEEL_RADIUS_M;
+    float a = g->mount_height - TEST_WHEEL_RADIUS_M;
     float sx = wx + g->mount_fwd * cosf(pitch) - a * sinf(pitch);
-    float sz = tz(wx) + AGR_WHEEL_RADIUS_M + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
+    float sz = tz(wx) + TEST_WHEEL_RADIUS_M + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
     float delta = g->mount_angle - pitch;
     float dx = cosf(delta), dz = -sinf(delta);
     for (float t = 0.05f; t < 12.0f; t += 0.005f) {
@@ -82,10 +84,10 @@ static void pipeline_tick(
             AgrGroundPoint pt = agr_locate(geo, pitch, r);
             if (pt.ok) {
                 if (pt.x <= AGR_AHEAD_M) {
-                    float a = geo->mount_height - AGR_WHEEL_RADIUS_M;
+                    float a = geo->mount_height - TEST_WHEEL_RADIUS_M;
                     float sx0 = geo->mount_fwd * cosf(pitch) - a * sinf(pitch);
                     float sz0 =
-                        AGR_WHEEL_RADIUS_M + geo->mount_fwd * sinf(pitch) + a * cosf(pitch);
+                        TEST_WHEEL_RADIUS_M + geo->mount_fwd * sinf(pitch) + a * cosf(pitch);
                     agr_profile_clear_ray(prof, sx0, sz0, pt.x, pt.z);
                     agr_profile_insert(prof, pt.x, pt.z, 1.0f);
                 } else {
@@ -105,6 +107,7 @@ int main(void) {
     AgrGeometry geo = {
         .mount_angle = 13.0f * AGR_DEG2RAD, .mount_offset = 0.0f,
         .mount_height = 0.175f, .mount_fwd = 0.35f, .range_bias = 0.0f,
+        .wheel_radius = TEST_WHEEL_RADIUS_M,
     };
     AgrTuning cfg = {
         .strength_up = 0.3f, .strength_down = 0.3f,
@@ -153,9 +156,9 @@ int main(void) {
                 AgrGroundPoint pt = agr_locate(&geo, pitch, r);
                 if (pt.ok) {
                     if (pt.x <= AGR_AHEAD_M) {
-                        float a = geo.mount_height - AGR_WHEEL_RADIUS_M;
+                        float a = geo.mount_height - TEST_WHEEL_RADIUS_M;
                         float sx0 = geo.mount_fwd * cosf(pitch) - a * sinf(pitch);
-                        float sz0 = AGR_WHEEL_RADIUS_M + geo.mount_fwd * sinf(pitch) +
+                        float sz0 = TEST_WHEEL_RADIUS_M + geo.mount_fwd * sinf(pitch) +
                                     a * cosf(pitch);
                         agr_profile_clear_ray(&prof, sx0, sz0, pt.x, pt.z);
                         agr_profile_insert(&prof, pt.x, pt.z, 1.0f);

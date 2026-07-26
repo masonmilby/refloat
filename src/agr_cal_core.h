@@ -44,10 +44,10 @@ typedef struct {
 void agr_cal_sweep_init(AgrCalSweep *s);
 void agr_cal_sweep_add(AgrCalSweep *s, float pitch_rad, float range_m);
 // mount_angle_cad in rad; fits {h, f, theta_err, b} to the binned curve
-AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad);
+AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float wheel_radius);
 // predicted flat-ground slant range for params (shared with tau scan + dump)
 float agr_cal_model(
-    float pitch, float mount_angle, float theta_err, float h, float f, float b
+    float pitch, float mount_angle, float theta_err, float h, float f, float b, float wheel_radius
 );
 
 #define AGR_TAU_CANDIDATES 16

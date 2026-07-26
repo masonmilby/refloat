@@ -15,7 +15,14 @@ static int host_printf(const char *fmt, ...) {
     return 0;
 }
 
-static vesc_if_host host_if = {host_output_disabled, host_system_time, host_printf};
+static float host_get_cfg_float(int param) {
+    (void) param;
+    return 0.2921f;  // 11.5" tire
+}
+
+static vesc_if_host host_if = {
+    host_output_disabled, host_system_time, host_printf, host_get_cfg_float
+};
 vesc_if_host *VESC_IF = &host_if;
 
 systime_t vesc_system_time_ticks(void) {

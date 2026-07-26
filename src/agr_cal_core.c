@@ -36,10 +36,12 @@ static bool bin_usable(const AgrCalSweep *s, int i, float mount_angle_cad) {
            (mount_angle_cad - bin_pitch_rad(i)) * AGR_RAD2DEG >= AGR_CAL_MIN_DELTA_DEG;
 }
 
-float agr_cal_model(float pitch, float mount_angle, float theta_err, float h, float f, float b) {
+float agr_cal_model(
+    float pitch, float mount_angle, float theta_err, float h, float f, float b, float wheel_radius
+) {
     float delta = mount_angle + theta_err - pitch;
-    float a = h - AGR_WHEEL_RADIUS_M;
-    float zs = AGR_WHEEL_RADIUS_M + f * sinf(pitch) + a * cosf(pitch);
+    float a = h - wheel_radius;
+    float zs = wheel_radius + f * sinf(pitch) + a * cosf(pitch);
     return zs / sinf(delta) + b;
 }
 
@@ -78,7 +80,7 @@ static bool solve4(float A[4][4], float y[4], float x[4]) {
     return true;
 }
 
-AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad) {
+AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float wheel_radius) {
     AgrCalResult res = {.status = AGR_CAL_SINGULAR, .rms_m = 0.0f, .span_deg = 0.0f, .bins_used = 0};
     // usable bins: enough samples AND world depression >= 8 deg at the prior
     float p_min = 1e9f, p_max = -1e9f;
@@ -115,7 +117,9 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad) {
             float p = bin_pitch_rad(i);
             float w = (float) s->bin[i].n;
             float r_meas = s->bin[i].sum_r / w;
-            float pred = agr_cal_model(p, mount_angle_cad, prm[2], prm[0], prm[1], prm[3]);
+            float pred = agr_cal_model(
+                p, mount_angle_cad, prm[2], prm[0], prm[1], prm[3], wheel_radius
+            );
             float resid = r_meas - pred;
             float J[4];
             for (int k = 0; k < 4; k++) {  // central differences
@@ -126,8 +130,12 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad) {
                 }
                 lo[k] -= eps[k];
                 hi[k] += eps[k];
-                float f_lo = agr_cal_model(p, mount_angle_cad, lo[2], lo[0], lo[1], lo[3]);
-                float f_hi = agr_cal_model(p, mount_angle_cad, hi[2], hi[0], hi[1], hi[3]);
+                float f_lo = agr_cal_model(
+                    p, mount_angle_cad, lo[2], lo[0], lo[1], lo[3], wheel_radius
+                );
+                float f_hi = agr_cal_model(
+                    p, mount_angle_cad, hi[2], hi[0], hi[1], hi[3], wheel_radius
+                );
                 J[k] = (f_hi - f_lo) / (2.0f * eps[k]);
             }
             for (int a = 0; a < 4; a++) {
@@ -178,7 +186,7 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad) {
         float p = bin_pitch_rad(i);
         float w = (float) s->bin[i].n;
         float r = s->bin[i].sum_r / w -
-            agr_cal_model(p, mount_angle_cad, prm[2], prm[0], prm[1], prm[3]);
+            agr_cal_model(p, mount_angle_cad, prm[2], prm[0], prm[1], prm[3], wheel_radius);
         sse += w * r * r;
         wsum += w;
     }
@@ -208,7 +216,7 @@ void agr_tau_feed(
         float p = agr_pitch_ring_at(ring, lag_ticks);
         float pred = agr_cal_model(
             p, geo->mount_angle, geo->mount_offset, geo->mount_height, geo->mount_fwd,
-            geo->range_bias
+            geo->range_bias, geo->wheel_radius
         );
         float r = range_m - pred;
         t->sse[i] += r * r;

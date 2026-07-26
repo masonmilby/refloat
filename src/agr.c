@@ -70,6 +70,7 @@ void agr_configure(AGR *agr, const RefloatConfig *config, float frequency) {
     agr->geo.mount_height = config->agr_mount_height;
     agr->geo.mount_fwd = config->agr_mount_fwd;
     agr->geo.range_bias = config->agr_range_bias;
+    agr->geo.wheel_radius = VESC_IF->get_cfg_float(CFG_PARAM_si_wheel_diameter) * 0.5f;
     agr->lag_ticks = config->agr_lag_ms * frequency / 1000.0f;
     agr->sys_to_main = frequency / (float) SYSTEM_TICK_RATE_HZ;
     agr->timeout_ticks =
@@ -148,9 +149,9 @@ static void ingest(AGR *agr, const AgrRawSample *s, const Time *time) {
     }
     if (pt.x <= AGR_AHEAD_M) {
         // clearance sweep from the sensor origin toward the hit
-        float a = agr->geo.mount_height - AGR_WHEEL_RADIUS_M;
+        float a = agr->geo.mount_height - agr->geo.wheel_radius;
         float sx = agr->geo.mount_fwd * cosf(pitch) - a * sinf(pitch);
-        float sz = AGR_WHEEL_RADIUS_M + agr->geo.mount_fwd * sinf(pitch) + a * cosf(pitch);
+        float sz = agr->geo.wheel_radius + agr->geo.mount_fwd * sinf(pitch) + a * cosf(pitch);
         agr_profile_clear_ray(&agr->profile, sx, sz, pt.x, pt.z);
         // strength scales insertion weight: 0..255 -> 0.25..1.25
         float w = 0.25f + (float) s->strength / 255.0f;
@@ -201,9 +202,9 @@ void agr_update(
         if ((agr->sim_phase++ & 1) == 0) {
             float pitch = imu->pitch * AGR_DEG2RAD;
             float delta = agr->geo.mount_angle + agr->geo.mount_offset - pitch;
-            float a = agr->geo.mount_height - AGR_WHEEL_RADIUS_M;
+            float a = agr->geo.mount_height - agr->geo.wheel_radius;
             float xs = agr->geo.mount_fwd * cosf(pitch) - a * sinf(pitch);
-            float zs = AGR_WHEEL_RADIUS_M + agr->geo.mount_fwd * sinf(pitch) + a * cosf(pitch);
+            float zs = agr->geo.wheel_radius + agr->geo.mount_fwd * sinf(pitch) + a * cosf(pitch);
             float g = agr->sim_grade;
             float denom = sinf(delta) + g * cosf(delta);
             if (denom > 0.01f) {

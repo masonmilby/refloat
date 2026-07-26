@@ -44,9 +44,9 @@ AgrGroundPoint agr_locate(const AgrGeometry *g, float pitch, float range_m) {
         return p;
     }
     // sensor origin: (mount_fwd, mount_height - R) deck frame, rotated about the axle
-    float a = g->mount_height - AGR_WHEEL_RADIUS_M;
+    float a = g->mount_height - g->wheel_radius;
     float xs = g->mount_fwd * cosf(pitch) - a * sinf(pitch);
-    float zs = AGR_WHEEL_RADIUS_M + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
+    float zs = g->wheel_radius + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
     p.x = xs + r * cosf(delta);
     p.z = zs - r * sinf(delta);
     if (p.x < 0.0f || fabsf(p.z) > 2.0f) {

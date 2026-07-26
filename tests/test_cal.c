@@ -6,6 +6,8 @@
 
 #include <stdlib.h>
 
+#define TEST_WHEEL_RADIUS_M 0.146f
+
 static float noise(unsigned *seed) {  // deterministic ±5 mm uniform
     *seed = *seed * 1103515245u + 12345u;
     return (((*seed >> 16) & 0x7fff) / 32767.0f - 0.5f) * 0.010f;
@@ -21,11 +23,11 @@ int main(void) {
     for (float pd = -20.0f; pd <= 4.0f; pd += 0.25f) {
         float p = pd * AGR_DEG2RAD;
         for (int k = 0; k < 12; k++) {
-            float r = agr_cal_model(p, cad, te, h, f, b) + noise(&seed);
+            float r = agr_cal_model(p, cad, te, h, f, b, TEST_WHEEL_RADIUS_M) + noise(&seed);
             agr_cal_sweep_add(&s, p, r);
         }
     }
-    AgrCalResult res = agr_cal_fit(&s, cad);
+    AgrCalResult res = agr_cal_fit(&s, cad, TEST_WHEEL_RADIUS_M);
     CHECK(res.status == AGR_CAL_OK);
     CHECK_NEAR(res.mount_height, h, 0.005f);
     CHECK_NEAR(res.mount_fwd, f, 0.015f);
@@ -41,14 +43,16 @@ int main(void) {
     // only ever consumed jointly via agr_locate; the contract is locate accuracy.
     {
         AgrGeometry g_true = {.mount_angle = cad, .mount_offset = te,
-                              .mount_height = h, .mount_fwd = f, .range_bias = b};
+                              .mount_height = h, .mount_fwd = f, .range_bias = b,
+                              .wheel_radius = TEST_WHEEL_RADIUS_M};
         AgrGeometry g_fit = {.mount_angle = cad, .mount_offset = res.mount_offset_deg * AGR_DEG2RAD,
                              .mount_height = res.mount_height, .mount_fwd = res.mount_fwd,
-                             .range_bias = res.range_bias};
+                             .range_bias = res.range_bias, .wheel_radius = TEST_WHEEL_RADIUS_M};
         float max_dz = 0.0f;
         for (float pd = -6.0f; pd <= 6.0f; pd += 0.5f) {
             float p = pd * AGR_DEG2RAD;
-            float r_true = agr_cal_model(p, cad, te, h, f, b);  // flat-ground range, truth
+            // flat-ground range, truth
+            float r_true = agr_cal_model(p, cad, te, h, f, b, TEST_WHEEL_RADIUS_M);
             AgrGroundPoint a_true = agr_locate(&g_true, p, r_true);
             AgrGroundPoint a_fit = agr_locate(&g_fit, p, r_true);
             if (a_true.ok && a_fit.ok) {
@@ -65,10 +69,10 @@ int main(void) {
     for (float pd = -2.0f; pd <= 2.0f; pd += 0.25f) {
         float p = pd * AGR_DEG2RAD;
         for (int k = 0; k < 12; k++) {
-            agr_cal_sweep_add(&tiny, p, agr_cal_model(p, cad, 0.0f, h, f, b));
+            agr_cal_sweep_add(&tiny, p, agr_cal_model(p, cad, 0.0f, h, f, b, TEST_WHEEL_RADIUS_M));
         }
     }
-    CHECK(agr_cal_fit(&tiny, cad).status == AGR_CAL_COVERAGE);
+    CHECK(agr_cal_fit(&tiny, cad, TEST_WHEEL_RADIUS_M).status == AGR_CAL_COVERAGE);
 
     // --- added tests ---
 
@@ -111,11 +115,11 @@ int main(void) {
         for (float pd = -20.0f; pd <= 4.0f; pd += 0.25f) {
             float p = pd * AGR_DEG2RAD;
             for (int k = 0; k < 12; k++) {
-                float r = agr_cal_model(p, cad, te, h, f, b) + noise(&seed2);
+                float r = agr_cal_model(p, cad, te, h, f, b, TEST_WHEEL_RADIUS_M) + noise(&seed2);
                 agr_cal_sweep_add(&ref, p, r);
             }
         }
-        AgrCalResult ref_res = agr_cal_fit(&ref, cad);
+        AgrCalResult ref_res = agr_cal_fit(&ref, cad, TEST_WHEEL_RADIUS_M);
         CHECK(ref_res.status == AGR_CAL_OK);
 
         // Build a copy with 4 extra samples at -5° (bin = (-5+40)/0.5 = 70) at wrong range.
@@ -127,7 +131,7 @@ int main(void) {
         for (float pd = -20.0f; pd <= 4.0f; pd += 0.25f) {
             float p = pd * AGR_DEG2RAD;
             for (int k = 0; k < 12; k++) {
-                float r = agr_cal_model(p, cad, te, h, f, b) + noise(&seed3);
+                float r = agr_cal_model(p, cad, te, h, f, b, TEST_WHEEL_RADIUS_M) + noise(&seed3);
                 agr_cal_sweep_add(&with_bad, p, r);
             }
         }
@@ -140,7 +144,7 @@ int main(void) {
         int bad_bin = (int) ((-22.0f + 40.0f) / AGR_CAL_BIN_DEG);  // = 36
         CHECK(with_bad.bin[bad_bin].n == 4);
 
-        AgrCalResult bad_res = agr_cal_fit(&with_bad, cad);
+        AgrCalResult bad_res = agr_cal_fit(&with_bad, cad, TEST_WHEEL_RADIUS_M);
         CHECK(bad_res.status == AGR_CAL_OK);
         // Results must agree: the n=4 bin was excluded
         CHECK_NEAR(bad_res.mount_height, ref_res.mount_height, 1e-4f);
@@ -165,15 +169,17 @@ int main(void) {
         agr_cal_sweep_init(&single);
         float p = -10.0f * AGR_DEG2RAD;  // one pitch, many samples
         for (int k = 0; k < 100; k++) {
-            agr_cal_sweep_add(&single, p, agr_cal_model(p, cad, 0.0f, h, f, b));
+            agr_cal_sweep_add(
+                &single, p, agr_cal_model(p, cad, 0.0f, h, f, b, TEST_WHEEL_RADIUS_M)
+            );
         }
         // span_deg = 0 for a single bin -> coverage refusal
-        AgrCalResult sr = agr_cal_fit(&single, cad);
+        AgrCalResult sr = agr_cal_fit(&single, cad, TEST_WHEEL_RADIUS_M);
         CHECK(sr.status == AGR_CAL_COVERAGE);
     }
 
     // model self-consistency with agr_locate:
-    // agr_cal_model(pitch, cad, te, h, f, b) and agr_locate must agree:
+    // agr_cal_model(pitch, cad, te, h, f, b, TEST_WHEEL_RADIUS_M) and agr_locate must agree:
     // feeding the model's output range back into locate (with matching geometry)
     // must yield z ≈ 0 (on flat ground) within 2 mm.
     // Reasoning: agr_locate computes r_internal = range - geo.range_bias
@@ -181,7 +187,7 @@ int main(void) {
     // then z = zs - r_internal * sin(delta) = zs - zs = 0. Exact by construction.
     {
         float pitch = -10.0f * AGR_DEG2RAD;
-        float r = agr_cal_model(pitch, cad, te, h, f, b);
+        float r = agr_cal_model(pitch, cad, te, h, f, b, TEST_WHEEL_RADIUS_M);
 
         // agr_locate uses mount_angle + mount_offset as total depression.
         // cad + te is the total angle; set mount_offset=te so the sum is correct.
@@ -191,6 +197,7 @@ int main(void) {
             .mount_height = h,
             .mount_fwd = f,
             .range_bias = b,
+            .wheel_radius = TEST_WHEEL_RADIUS_M,
         };
         AgrGroundPoint pt = agr_locate(&geo, pitch, r);
         CHECK(pt.ok);
@@ -200,7 +207,7 @@ int main(void) {
     // --- tau scan: synthetic rocking with 20 ms true lag ---
     {
         AgrGeometry geo = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
-                           .mount_fwd = f, .range_bias = b};
+                           .mount_fwd = f, .range_bias = b, .wheel_radius = TEST_WHEEL_RADIUS_M};
         AgrPitchRing ring;
         agr_pitch_ring_init(&ring);
         AgrTauScan tau;
@@ -217,7 +224,7 @@ int main(void) {
             ph++;
             if (i % 2 == 0 && ph > 10) {  // 250 Hz sensor, range lags pitch by 10 ticks
                 float lagged = pitch_hist[(ph - 1 - 10) % 64];
-                float r = agr_cal_model(lagged, cad, 0.0f, h, f, b);
+                float r = agr_cal_model(lagged, cad, 0.0f, h, f, b, TEST_WHEEL_RADIUS_M);
                 agr_tau_feed(&tau, &ring, &geo, r, tick_hz);
             }
         }
@@ -246,7 +253,7 @@ int main(void) {
     // --- tau: insufficient samples (n=400) returns -1 ---
     {
         AgrGeometry geo2 = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
-                            .mount_fwd = f, .range_bias = b};
+                            .mount_fwd = f, .range_bias = b, .wheel_radius = TEST_WHEEL_RADIUS_M};
         AgrPitchRing ring2;
         agr_pitch_ring_init(&ring2);
         AgrTauScan tau2;
@@ -254,7 +261,7 @@ int main(void) {
         for (int i = 0; i < 400; i++) {
             float pitch = 8.0f * AGR_DEG2RAD * sinf(2.0f * 3.14159265f * 1.2f * (float) i / 500.0f);
             agr_pitch_ring_push(&ring2, pitch);
-            float r = agr_cal_model(pitch, cad, 0.0f, h, f, b);
+            float r = agr_cal_model(pitch, cad, 0.0f, h, f, b, TEST_WHEEL_RADIUS_M);
             agr_tau_feed(&tau2, &ring2, &geo2, r, 500.0f);
         }
         CHECK(tau2.n == 400);
@@ -264,7 +271,7 @@ int main(void) {
     // --- tau at 0 ms lag: true lag 0 ticks -> result < 2 ms ---
     {
         AgrGeometry geo3 = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
-                            .mount_fwd = f, .range_bias = b};
+                            .mount_fwd = f, .range_bias = b, .wheel_radius = TEST_WHEEL_RADIUS_M};
         AgrPitchRing ring3;
         agr_pitch_ring_init(&ring3);
         AgrTauScan tau3;
@@ -276,7 +283,7 @@ int main(void) {
             agr_pitch_ring_push(&ring3, pitch);
             if (i % 2 == 0) {
                 // range uses CURRENT pitch (0 ms lag)
-                float r = agr_cal_model(pitch, cad, 0.0f, h, f, b);
+                float r = agr_cal_model(pitch, cad, 0.0f, h, f, b, TEST_WHEEL_RADIUS_M);
                 agr_tau_feed(&tau3, &ring3, &geo3, r, 500.0f);
             }
         }
@@ -290,7 +297,7 @@ int main(void) {
     // exactly candidate 15's ms value = 60.0 ms (no interpolation at edge).
     {
         AgrGeometry geo4 = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
-                            .mount_fwd = f, .range_bias = b};
+                            .mount_fwd = f, .range_bias = b, .wheel_radius = TEST_WHEEL_RADIUS_M};
         AgrPitchRing ring4;
         agr_pitch_ring_init(&ring4);
         AgrTauScan tau4;
@@ -306,7 +313,7 @@ int main(void) {
             ph4++;
             if (i % 2 == 0 && ph4 > 30) {  // range lags by 30 ticks = 60 ms
                 float lagged = pitch_hist4[(ph4 - 1 - 30) % 64];
-                float r = agr_cal_model(lagged, cad, 0.0f, h, f, b);
+                float r = agr_cal_model(lagged, cad, 0.0f, h, f, b, TEST_WHEEL_RADIUS_M);
                 agr_tau_feed(&tau4, &ring4, &geo4, r, 500.0f);
             }
         }

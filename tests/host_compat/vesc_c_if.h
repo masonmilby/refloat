@@ -18,10 +18,13 @@
 typedef uint32_t systime_t;
 typedef int mc_fault_code;
 
+#define CFG_PARAM_si_wheel_diameter 0
+
 typedef struct {
     bool (*app_is_output_disabled)(void);
     float (*system_time)(void);
     int (*printf)(const char *fmt, ...);
+    float (*get_cfg_float)(int param);
 } vesc_if_host;
 
 extern vesc_if_host *VESC_IF;

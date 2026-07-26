@@ -3,6 +3,8 @@
 #include "agr_math.h"
 #include "t.h"
 
+#define TEST_WHEEL_RADIUS_M 0.146f
+
 static AgrGeometry flat_geo(void) {
     AgrGeometry g = {
         .mount_angle = 13.0f * AGR_DEG2RAD,
@@ -10,6 +12,7 @@ static AgrGeometry flat_geo(void) {
         .mount_height = 0.175f,
         .mount_fwd = 0.35f,
         .range_bias = 0.0f,
+        .wheel_radius = TEST_WHEEL_RADIUS_M,
     };
     return g;
 }
@@ -17,8 +20,8 @@ static AgrGeometry flat_geo(void) {
 // slant range a sensor with geometry g at pitch p would read on flat ground
 static float flat_range(const AgrGeometry *g, float pitch) {
     float delta = g->mount_angle + g->mount_offset - pitch;
-    float a = g->mount_height - AGR_WHEEL_RADIUS_M;
-    float zs = AGR_WHEEL_RADIUS_M + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
+    float a = g->mount_height - TEST_WHEEL_RADIUS_M;
+    float zs = TEST_WHEEL_RADIUS_M + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
     return zs / sinf(delta) + g->range_bias;
 }
 

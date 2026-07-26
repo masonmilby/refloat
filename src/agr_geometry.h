@@ -5,9 +5,6 @@
 #include <stdint.h>
 
 #define AGR_PITCH_RING 32
-// 11.5" tire (0.2921 m). Locate sensitivity is mm-scale; tire wear is absorbed
-// by the live trim. Not config-worthy.
-#define AGR_WHEEL_RADIUS_M 0.146f
 #define AGR_MIN_DEPRESSION_RAD (2.0f * 0.017453293f)
 
 typedef struct {
@@ -22,6 +19,7 @@ typedef struct {
     float mount_height;  // m, sensor optical center above ground, level deck
     float mount_fwd;     // m, sensor forward of axle
     float range_bias;    // m, sensor zero offset + mount recess
+    float wheel_radius;  // m, from the firmware's si_wheel_diameter
 } AgrGeometry;
 
 typedef struct {
