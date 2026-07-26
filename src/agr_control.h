@@ -8,6 +8,7 @@
 
 #define AGR_SIGHT_WINDOW 64
 #define AGR_RESIDUAL_RECOVER 0.8f
+#define AGR_REARM_M 0.15f
 
 // plain-float mirror of the agr_* config params the control layer needs;
 // the glue layer fills it from RefloatConfig each configure()
@@ -31,8 +32,10 @@ typedef struct {
     bool link_ok, sight_ok, fit_ok, policy_ok;
     bool trusted;
     float fade;  // 0..1, slewed
-    // net reverse progress: drives both gain selection and the fade policy
+    // policy evidence: net drawdown against the fade threshold
     float rev_m;
+    // direction evidence: contiguous forward progress toward re-arm
+    float fwd_m;
     bool dir_forward;
     float valid_fraction;
 } AgrTrust;

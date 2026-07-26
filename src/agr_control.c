@@ -15,6 +15,7 @@ void agr_trust_init(AgrTrust *t) {
     t->trusted = false;
     t->fade = 0.0f;
     t->rev_m = 0.0f;
+    t->fwd_m = 0.0f;
     t->dir_forward = true;
     t->valid_fraction = 0.0f;
 }
@@ -56,24 +57,37 @@ void agr_trust_update(
     // rev_m is a drawdown: distance below the running forward-most position,
     // clamped to [0, cap] — not a net-since-init sum, so symmetric dither
     // holds it at the current excursion rather than returning it to zero.
-    // One accumulator does guarantee the gain/limit latch and the fade policy
-    // read the same number, so they can never disagree; and because every
-    // forward tick reduces rev_m directly, with no separate contiguity
-    // counter for a reverse tick to reset, it cannot ratchet upward without
-    // bound the way the old dual-accumulator scheme could.
     // dist_delta_m is finite- and magnitude-guarded by the caller.
+    //
+    // dir_forward has its own evidence (fwd_m, contiguous forward progress)
+    // rather than sharing rev_m: keying the latch's re-arm on rev_m alone
+    // would force it to wait for a full drain — as much forward travel as
+    // the reverse took — leaving the wrong (loose) nose-down limit selected
+    // the whole time. fwd_m re-arms after a small fixed distance instead, so
+    // the tight limit returns promptly regardless of how deep the reversal
+    // was; the fade policy (rev_m vs. reverse_fade_m) is unaffected and still
+    // needs a full drain to clear.
+
+    // policy evidence: net drawdown (unchanged)
     float cap = cfg->reverse_fade_m + cfg->dir_flip_m;
     t->rev_m = agr_clampf(t->rev_m - dist_delta_m, 0.0f, cap);
 
-    // the tight limit must govern the whole authority window, so the latch flips
-    // no later than the fade threshold
+    // direction evidence: contiguous forward progress. Capped at the re-arm
+    // threshold so it cannot grow without bound over a long ride.
+    if (dist_delta_m < 0.0f) {
+        t->fwd_m = 0.0f;
+    } else {
+        t->fwd_m = fminf(t->fwd_m + dist_delta_m, AGR_REARM_M);
+    }
+
     float flip = fminf(cfg->dir_flip_m, cfg->reverse_fade_m);
     if (t->rev_m > flip) {
         t->dir_forward = false;
-    } else if (t->rev_m == 0.0f) {
+    } else if (t->fwd_m >= AGR_REARM_M) {
         t->dir_forward = true;
     }
 
+    // fade policy unchanged
     if (t->rev_m > cfg->reverse_fade_m) {
         t->policy_ok = false;
     } else if (t->rev_m == 0.0f) {
