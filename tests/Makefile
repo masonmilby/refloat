@@ -1,12 +1,15 @@
 # forks/refloat/tests/Makefile — host-gcc harness for the pure AGR cores
 CC ?= gcc
-CFLAGS := -Wall -Wextra -Werror -std=c11 -D_GNU_SOURCE -g -I./host_compat -I../src
+CFLAGS := -Wall -Wextra -Werror -std=c11 -D_GNU_SOURCE -g -include stddef.h -I./host_compat -I../src
 CORE_SRC :=
 CORE_SRC += ../src/agr_geometry.c
 CORE_SRC += ../src/agr_profile.c
 CORE_SRC += ../src/agr_control.c
 CORE_SRC += ../src/filters/ema.c
 CORE_SRC += ../src/agr_cal_core.c
+CORE_SRC += ../src/agr.c
+CORE_SRC += ../src/conf/buffer.c
+CORE_SRC += host_compat/host_stubs.c
 TESTS := $(patsubst %.c,%,$(wildcard test_*.c))
 
 all: $(TESTS)

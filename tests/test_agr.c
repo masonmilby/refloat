@@ -1,0 +1,20 @@
+// forks/refloat/tests/test_agr.c
+#include "agr.h"
+#include "t.h"
+
+int main(void) {
+    AGR agr;
+    agr_init(&agr);
+
+    // a well-formed range frame is accepted and lands in the rx ring
+    uint8_t frame[AGR_FRAME_DLC] = {0x01, 0x2C, 200, 1};  // 300 mm, strength 200, counter 1
+    CHECK(agr_handle_can_frame(&agr, frame, AGR_FRAME_DLC));
+
+    // a short frame is rejected without reading past len
+    CHECK(!agr_handle_can_frame(&agr, frame, AGR_FRAME_DLC - 1));
+
+    // default-config output is zero
+    CHECK(agr.setpoint == 0.0f);
+
+    T_REPORT();
+}
