@@ -70,8 +70,11 @@ void agr_configure(AGR *agr, const RefloatConfig *config, float frequency) {
     agr->geo.mount_height = config->agr_mount_height;
     agr->geo.mount_fwd = config->agr_mount_fwd;
     agr->geo.range_bias = config->agr_range_bias;
-    agr->geo.wheel_radius =
-        agr_clampf(VESC_IF->get_cfg_float(CFG_PARAM_si_wheel_diameter) * 0.5f, 0.05f, 0.30f);
+    float wheel_r = VESC_IF->get_cfg_float(CFG_PARAM_si_wheel_diameter) * 0.5f;
+    // comparison order matters: a NaN fails the first test and lands on the
+    // low bound, where agr_clampf's ordering would pass NaN through into
+    // the geometry
+    agr->geo.wheel_radius = wheel_r > 0.05f ? (wheel_r < 0.30f ? wheel_r : 0.30f) : 0.05f;
     agr->lag_ticks = config->agr_lag_ms * frequency / 1000.0f;
     agr->sys_to_main = frequency / (float) SYSTEM_TICK_RATE_HZ;
     agr->timeout_ticks =

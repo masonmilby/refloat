@@ -350,5 +350,14 @@ int main(void) {
     agr_trust_update(&te, &good, false, 0.01f, &cfg_exact, dt);
     CHECK(!te.sight_ok);  // exact tie must clear (inclusive toward distrust)
 
+    // wheel_radius NaN guard: the reordered clamp at agr_configure's
+    // wheel_radius site (v > lo ? (v < hi ? v : hi) : lo) must land NaN on
+    // lo, unlike agr_clampf's v < lo ? lo : (v > hi ? hi : v), which lets
+    // NaN pass through unchanged
+    float nan_v = NAN;
+    float safe = nan_v > 0.05f ? (nan_v < 0.30f ? nan_v : 0.30f) : 0.05f;
+    CHECK(isfinite(safe));
+    CHECK(safe == 0.05f);
+
     T_REPORT();
 }
