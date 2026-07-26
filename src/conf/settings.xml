@@ -2802,6 +2802,60 @@ p, li { white-space: pre-wrap; }
             <suffix></suffix>
             <vTx>3</vTx>
         </agr_can_id>
+        <agr_dir_flip_m>
+            <longName>AGR Direction Flip Distance</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>Net reverse travel before AGR treats the board as travelling backwards and swaps the nose-up/nose-down limits. Above any standstill rock-back, below a deliberate reverse.</description>
+            <cDefine>CFG_DFLT_AGR_DIR_FLIP_M</cDefine>
+            <editorDecimalsDouble>2</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>2.0</maxDouble>
+            <minDouble>0.3</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.05</stepDouble>
+            <valDouble>0.6</valDouble>
+            <vTxDoubleScale>100</vTxDoubleScale>
+            <suffix> m</suffix>
+            <vTx>7</vTx>
+        </agr_dir_flip_m>
+        <agr_stale_ms>
+            <longName>AGR Staleness Timeout</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>Range-stream silence before AGR fades out. Must exceed the sensor node's frame interval: at the node's default 250 Hz that is 4 ms, but a reconfigured node at 10 Hz needs at least 100 ms here.</description>
+            <cDefine>CFG_DFLT_AGR_STALE_MS</cDefine>
+            <editorDecimalsDouble>0</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>500</maxDouble>
+            <minDouble>20</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>5</stepDouble>
+            <valDouble>50</valDouble>
+            <vTxDoubleScale>10</vTxDoubleScale>
+            <suffix> ms</suffix>
+            <vTx>7</vTx>
+        </agr_stale_ms>
+        <agr_residual_max>
+            <longName>AGR Fit Residual Ceiling</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>Terrain-fit residual above which AGR stops trusting the fit. Raise on rough ground, lower on smooth. Recovery is at 80% of this value.</description>
+            <cDefine>CFG_DFLT_AGR_RESIDUAL_MAX</cDefine>
+            <editorDecimalsDouble>3</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>0.15</maxDouble>
+            <minDouble>0.01</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.005</stepDouble>
+            <valDouble>0.03</valDouble>
+            <vTxDoubleScale>1000</vTxDoubleScale>
+            <suffix> m</suffix>
+            <vTx>7</vTx>
+        </agr_residual_max>
         <turntilt_strength>
             <longName>Strength</longName>
             <type>1</type>
@@ -4545,6 +4599,9 @@ p, li { white-space: pre-wrap; }
         <ser>agr_filter</ser>
         <ser>agr_rate_limit</ser>
         <ser>agr_can_id</ser>
+        <ser>agr_dir_flip_m</ser>
+        <ser>agr_stale_ms</ser>
+        <ser>agr_residual_max</ser>
     </SerOrder>
     <Grouping>
         <group>

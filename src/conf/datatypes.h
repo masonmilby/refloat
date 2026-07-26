@@ -331,6 +331,9 @@ typedef struct {
     float agr_filter;
     float agr_rate_limit;
     uint16_t agr_can_id;
+    float agr_dir_flip_m;
+    float agr_stale_ms;
+    float agr_residual_max;
     float turntilt_strength;
     float turntilt_angle_limit;
     float turntilt_start_angle;

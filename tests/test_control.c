@@ -8,8 +8,9 @@ static AgrTuning tun(void) {
         .strength_up = 0.3f, .strength_down = 0.2f,
         .angle_limit_up = 8.0f, .angle_limit_down = 4.0f,
         .taper_erpm = 0.0f,
-        .sight_on = 0.5f, .sight_off = 0.3f,
-        .fade_rate = 2.0f, .reverse_fade_m = 1.0f, .rate_limit = 15.0f,
+        .sight_on = 0.5f, .sight_off = 0.3f, .residual_max = 0.03f,
+        .fade_rate = 2.0f, .reverse_fade_m = 1.0f, .dir_flip_m = 0.6f,
+        .rate_limit = 15.0f,
     };
     return c;
 }

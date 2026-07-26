@@ -7,7 +7,6 @@
 #include <stdint.h>
 
 #define AGR_SIGHT_WINDOW 64
-#define AGR_RESIDUAL_CEIL_M 0.03f
 #define AGR_RESIDUAL_RECOVER 0.8f
 #define AGR_REVERSE_CLEAR_M 0.25f
 #define AGR_DIR_DEBOUNCE_ERPM 100.0f
@@ -19,8 +18,10 @@ typedef struct {
     float angle_limit_up, angle_limit_down;  // deg; down caps nose-down commands
     float taper_erpm;                        // 0 disables
     float sight_on, sight_off;               // valid-fraction hysteresis
+    float residual_max;                      // m, fit-quality ceiling
     float fade_rate;                         // 1/s
     float reverse_fade_m;
+    float dir_flip_m;
     float rate_limit;  // deg/s
 } AgrTuning;
 

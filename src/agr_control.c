@@ -49,9 +49,9 @@ void agr_trust_update(
 
     // fit validity is near-field-floored upstream (agr_profile_fit gates on
     // cells-only weight and span): a far point alone can never carry trust
-    if (!fit->valid || fit->residual > AGR_RESIDUAL_CEIL_M) {
+    if (!fit->valid || fit->residual > cfg->residual_max) {
         t->fit_ok = false;
-    } else if (fit->residual <= AGR_RESIDUAL_CEIL_M * AGR_RESIDUAL_RECOVER) {
+    } else if (fit->residual <= cfg->residual_max * AGR_RESIDUAL_RECOVER) {
         t->fit_ok = true;
     }
 

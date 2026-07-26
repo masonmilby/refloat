@@ -109,7 +109,7 @@ int main(void) {
     AgrTuning cfg = {
         .strength_up = 0.3f, .strength_down = 0.3f,
         .angle_limit_up = 8.0f, .angle_limit_down = 4.0f, .taper_erpm = 0.0f,
-        .sight_on = 0.5f, .sight_off = 0.3f, .fade_rate = 2.0f,
+        .sight_on = 0.5f, .sight_off = 0.3f, .residual_max = 0.03f, .fade_rate = 2.0f,
         .reverse_fade_m = 1.0f, .rate_limit = 15.0f,
     };
     AgrProfile prof;
@@ -213,7 +213,7 @@ int main(void) {
     CHECK(sp_at[2] > sp_at[1] + 0.3f);
     CHECK(sp_at[2] > 0.5f);
     // the 20% corner residual stays under the fit ceiling, so trust never dips
-    CHECK(max_corner_res < AGR_RESIDUAL_CEIL_M);
+    CHECK(max_corner_res < cfg.residual_max);
     CHECK(fade_at_sp2 >= 0.99f);
 
     // ---- sustained grade hold ----

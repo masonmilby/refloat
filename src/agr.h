@@ -32,7 +32,6 @@
 // esp_tof range frame: base+0, DLC 4, big-endian (ESP_ToF_SPEC.md section 4.1)
 #define AGR_FRAME_DLC 4
 #define AGR_NO_RETURN 0xFFFF
-#define AGR_TIMEOUT_TICKS (SYSTEM_TICK_RATE_HZ / 20)  // 50 ms: silence is loss
 #define AGR_RX_RING 4
 // sweep-abort threshold on net travel: rotor-locked tipping rolls ~±0.1 m and is
 // harmless (flat floor is translation-invariant); riding trips this within 0.3 m
@@ -77,6 +76,7 @@ typedef struct {
 
     float trim_deg;
     float lag_ticks;
+    uint32_t timeout_ticks;  // range-stream silence budget, from agr_stale_ms
     float sys_to_main;  // SYSTEM_TICK_RATE_HZ ticks → main-loop ticks
     float last_distance;
     bool have_distance;

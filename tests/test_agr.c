@@ -43,6 +43,8 @@ int main(void) {
     conf.agr_reverse_fade_m = 1.0f;
     conf.agr_filter = 10.0f;
     conf.agr_rate_limit = 15.0f;
+    conf.agr_stale_ms = 50.0f;
+    conf.agr_residual_max = 0.03f;
 
     agr_init(&a_now);
     agr_init(&a_ahead);

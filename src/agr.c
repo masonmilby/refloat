@@ -72,6 +72,8 @@ void agr_configure(AGR *agr, const RefloatConfig *config, float frequency) {
     agr->geo.range_bias = config->agr_range_bias;
     agr->lag_ticks = config->agr_lag_ms * frequency / 1000.0f;
     agr->sys_to_main = frequency / (float) SYSTEM_TICK_RATE_HZ;
+    agr->timeout_ticks =
+        (uint32_t) (config->agr_stale_ms * 0.001f * (float) SYSTEM_TICK_RATE_HZ);
 
     agr->tuning.strength_up = config->agr_strength_up;
     agr->tuning.strength_down = config->agr_strength_down;
@@ -80,8 +82,10 @@ void agr_configure(AGR *agr, const RefloatConfig *config, float frequency) {
     agr->tuning.taper_erpm = (float) config->agr_taper_erpm;
     agr->tuning.sight_on = config->agr_sight_on;
     agr->tuning.sight_off = config->agr_sight_off;
+    agr->tuning.residual_max = config->agr_residual_max;
     agr->tuning.fade_rate = config->agr_fade_rate;
     agr->tuning.reverse_fade_m = config->agr_reverse_fade_m;
+    agr->tuning.dir_flip_m = config->agr_dir_flip_m;
     agr->tuning.rate_limit = config->agr_rate_limit;
     agr_cond_configure(&agr->cond, config->agr_filter, frequency);
 }
@@ -229,7 +233,7 @@ void agr_update(
     agr->g_cmd = agr->fit.valid ? atanf(agr->fit.slope) * AGR_RAD2DEG : 0.0f;
 
     int32_t since_rx = (int32_t) (time->now - agr->last_rx_tick);
-    bool stale = since_rx > (int32_t) AGR_TIMEOUT_TICKS;
+    bool stale = since_rx > (int32_t) agr->timeout_ticks;
     agr_trust_update(&agr->trust, &agr->fit, stale, motor->erpm, dd, &agr->tuning, dt);
 
     float raw = agr->fit.valid
