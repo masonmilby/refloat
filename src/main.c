@@ -2848,6 +2848,14 @@ static void terminal_agr_cal(int argc, const char **argv) {
         a->cal_mode = AGR_CAL_TAU;
         VESC_IF->printf("rock the board for 10 s...\n");
     } else if (str_eq(argv[1], "apply")) {
+        if (d->state.mode != MODE_NORMAL) {
+            VESC_IF->printf("agr_cal apply: refused -- handtest/flywheel active\n");
+            return;
+        }
+        if (d->state.state == STATE_RUNNING || d->motor.abs_erpm > 100) {
+            VESC_IF->printf("agr_cal apply: refused -- board is running or moving\n");
+            return;
+        }
         if (a->cal_mode == AGR_CAL_PENDING && a->cal_result.status == AGR_CAL_OK) {
             d->float_conf.agr_mount_height = a->cal_result.mount_height;
             d->float_conf.agr_mount_fwd = a->cal_result.mount_fwd;
