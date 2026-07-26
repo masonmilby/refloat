@@ -275,4 +275,5 @@ void agr_update(
 void agr_winddown(AGR *agr) {
     agr_cond_winddown(&agr->cond);
     agr->setpoint = agr->cond.setpoint;
+    agr->have_distance = false;
 }
