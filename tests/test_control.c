@@ -236,5 +236,22 @@ int main(void) {
     agr_trust_update(&z, &good, false, 1000.0f, 0.01f, &zcfg, dt);
     CHECK(!z.sight_ok);
 
+    // sight gate at exact equality: 16 valid samples / 64 window = 0.25 = sight_off
+    // tests that <= semantics is inclusive toward distrust at nonzero thresholds
+    AgrTuning cfg_exact = tun();
+    cfg_exact.sight_off = 0.25f;  // exact in binary float
+    AgrTrust te;
+    agr_trust_init(&te);
+    for (int i = 0; i < 64; i++) {
+        agr_trust_sample(&te, true);  // latch sight_ok true
+    }
+    agr_trust_update(&te, &good, false, 1000.0f, 0.01f, &cfg_exact, dt);
+    CHECK(te.sight_ok);  // latched at 100%
+    for (int i = 0; i < 64; i++) {
+        agr_trust_sample(&te, i < 16);  // exactly 16 valid: 16/64 = 0.25
+    }
+    agr_trust_update(&te, &good, false, 1000.0f, 0.01f, &cfg_exact, dt);
+    CHECK(!te.sight_ok);  // exact tie must clear (inclusive toward distrust)
+
     T_REPORT();
 }
