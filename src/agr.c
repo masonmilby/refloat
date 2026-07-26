@@ -129,9 +129,14 @@ static void ingest(AGR *agr, const AgrRawSample *s, const Time *time) {
     if (!valid) {
         return;  // blindness evidence: routed to trust only, never terrain
     }
-    // lag compensation: pitch at emission time = rx age + configured pipeline lag
-    // rx age is in system ticks; the pitch ring (and lag_ticks) are in main-loop ticks
-    float lag = (float) (time->now - s->rx_tick) * agr->sys_to_main + agr->lag_ticks;
+    // lag compensation: pitch at emission time = rx age + configured pipeline lag.
+    // rx_tick is stamped in the CAN thread while time->now is latched once at the
+    // top of the main loop, so a frame landing mid-tick reads newer than now.
+    int32_t age_ticks = (int32_t) (time->now - s->rx_tick);
+    if (age_ticks < 0) {
+        age_ticks = 0;
+    }
+    float lag = (float) age_ticks * agr->sys_to_main + agr->lag_ticks;
     float pitch = agr_pitch_ring_at(&agr->pitch_ring, lag);
     AgrGroundPoint pt = agr_locate(&agr->geo, pitch, (float) s->range_mm * 0.001f);
     if (!pt.ok) {
@@ -223,7 +228,8 @@ void agr_update(
     // fitted grade in degrees, this tick (0 when the fit is not actionable)
     agr->g_cmd = agr->fit.valid ? atanf(agr->fit.slope) * AGR_RAD2DEG : 0.0f;
 
-    bool stale = (time->now - agr->last_rx_tick) > AGR_TIMEOUT_TICKS;
+    int32_t since_rx = (int32_t) (time->now - agr->last_rx_tick);
+    bool stale = since_rx > (int32_t) AGR_TIMEOUT_TICKS;
     agr_trust_update(&agr->trust, &agr->fit, stale, motor->erpm, dd, &agr->tuning, dt);
 
     float raw = agr->fit.valid
