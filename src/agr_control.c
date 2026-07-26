@@ -59,26 +59,25 @@ void agr_trust_update(
     // holds it at the current excursion rather than returning it to zero.
     // dist_delta_m is finite- and magnitude-guarded by the caller.
     //
-    // dir_forward has its own evidence (fwd_m, contiguous forward progress)
-    // rather than sharing rev_m: keying the latch's re-arm on rev_m alone
-    // would force it to wait for a full drain — as much forward travel as
-    // the reverse took — leaving the wrong (loose) nose-down limit selected
-    // the whole time. fwd_m re-arms after a small fixed distance instead, so
-    // the tight limit returns promptly regardless of how deep the reversal
-    // was; the fade policy (rev_m vs. reverse_fade_m) is unaffected and still
-    // needs a full drain to clear.
+    // dir_forward has its own evidence (fwd_m, a run-up from the running
+    // minimum) rather than sharing rev_m: keying the latch's re-arm on rev_m
+    // alone would force it to wait for a full drain — as much forward travel
+    // as the reverse took — leaving the wrong (loose) nose-down limit
+    // selected the whole time. fwd_m re-arms after a small fixed distance
+    // instead, so the tight limit returns promptly regardless of how deep
+    // the reversal was; the fade policy (rev_m vs. reverse_fade_m) is
+    // unaffected and still needs a full drain to clear.
 
     // policy evidence: net drawdown (unchanged)
     float cap = cfg->reverse_fade_m + cfg->dir_flip_m;
     t->rev_m = agr_clampf(t->rev_m - dist_delta_m, 0.0f, cap);
 
-    // direction evidence: contiguous forward progress. Capped at the re-arm
-    // threshold so it cannot grow without bound over a long ride.
-    if (dist_delta_m < 0.0f) {
-        t->fwd_m = 0.0f;
-    } else {
-        t->fwd_m = fminf(t->fwd_m + dist_delta_m, cfg->rearm_m);
-    }
+    // direction evidence: run-up from the running minimum, clamped to
+    // [0, re-arm threshold]. A single backward tick only gives back that
+    // tick's distance rather than zeroing the run outright, so odometry
+    // dither (quantised tachometer steps) can't hold this at zero forever
+    // the way contiguity-counting did.
+    t->fwd_m = agr_clampf(t->fwd_m + dist_delta_m, 0.0f, cfg->rearm_m);
 
     // forward evidence must win outright: checking rev_m first would make
     // the re-arm unreachable while rev_m > flip, forcing the latch to wait

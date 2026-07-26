@@ -186,6 +186,27 @@ int main(void) {
     CHECK(t.dir_forward);
     CHECK(t.policy_ok);
 
+    // quantized forward run: net forward progress punctuated by single
+    // backward ticks (tachometer dither) must still re-arm the direction
+    // latch. Under the old contiguity rule a single backward tick zeroed
+    // fwd_m outright, so an interruption every few ticks capped it far below
+    // rearm_m forever even though net travel was strongly forward.
+    agr_trust_init(&t);
+    for (int i = 0; i < 64; i++) {
+        agr_trust_sample(&t, true);
+    }
+    for (int i = 0; i < 90; i++) {  // 0.90 m reverse: flips the latch, short of fade
+        agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
+    }
+    CHECK(!t.dir_forward);
+    for (int cyc = 0; cyc < 40; cyc++) {  // 4 forward ticks, then one backward tick
+        for (int i = 0; i < 4; i++) {
+            agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
+        }
+        agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
+    }
+    CHECK(t.dir_forward);  // re-armed despite the interruptions
+
     // fit gate hysteresis on residual
     agr_trust_init(&t);
     for (int i = 0; i < 64; i++) {
