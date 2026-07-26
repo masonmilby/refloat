@@ -41,7 +41,7 @@ void agr_trust_update(
     t->link_ok = !stale;
 
     t->valid_fraction = valid_fraction(t);
-    if (t->valid_fraction < cfg->sight_off) {
+    if (t->valid_fraction <= cfg->sight_off) {
         t->sight_ok = false;
     } else if (t->valid_fraction >= cfg->sight_on && t->bits_n >= AGR_SIGHT_WINDOW / 2) {
         t->sight_ok = true;

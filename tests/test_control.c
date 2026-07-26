@@ -220,5 +220,21 @@ int main(void) {
     }
     CHECK_NEAR(cond.setpoint, 1.472f, 0.05f);
 
+    // sight_off at its UI minimum of 0 must still clear on a fully blind window
+    AgrTuning zcfg = tun();
+    zcfg.sight_off = 0.0f;
+    AgrTrust z;
+    agr_trust_init(&z);
+    for (int i = 0; i < 64; i++) {
+        agr_trust_sample(&z, true);
+    }
+    agr_trust_update(&z, &good, false, 1000.0f, 0.01f, &zcfg, dt);
+    CHECK(z.sight_ok);
+    for (int i = 0; i < 64; i++) {
+        agr_trust_sample(&z, false);  // fully blind
+    }
+    agr_trust_update(&z, &good, false, 1000.0f, 0.01f, &zcfg, dt);
+    CHECK(!z.sight_ok);
+
     T_REPORT();
 }
