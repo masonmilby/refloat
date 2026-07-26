@@ -139,16 +139,18 @@ int main(void) {
     }
     CHECK(!t.policy_ok);
 
-    // the latch re-arms after ~AGR_REARM_M (0.15 m) of contiguous forward
-    // travel, not a full drain to zero: reversing only just past dir_flip_m
-    // and then rolling forward re-arms dir_forward at a small fixed distance
-    // (0.16 m here) while rev_m is still far from drained — a fraction of
-    // the 0.61 m a full drain would need
+    // the unmasked case: forward evidence alone must re-arm the latch even
+    // while rev_m is still ABOVE dir_flip_m. Reverse to strictly between
+    // dir_flip_m and reverse_fade_m (policy_ok stays true throughout), then
+    // roll forward past AGR_REARM_M: the latch must flip true on fwd_m's
+    // evidence, not wait for rev_m to first recede to the flip threshold on
+    // its own -- that wait was the fix-round-3 bug (forward evidence was
+    // checked second, so it could never win while rev_m > flip).
     agr_trust_init(&t);
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&t, true);
     }
-    for (int i = 0; i < 61; i++) {  // 0.61 m: past dir_flip_m (0.6), short of fade (1.0)
+    for (int i = 0; i < 90; i++) {  // 0.90 m: strictly between dir_flip_m (0.6) and fade (1.0)
         agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
     }
     CHECK(!t.dir_forward);
@@ -156,26 +158,27 @@ int main(void) {
     for (int i = 0; i < 20; i++) {  // 0.20 m forward: past AGR_REARM_M (0.15) with float margin
         agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
-    CHECK(t.dir_forward);   // re-armed well short of a full drain
-    CHECK(t.rev_m > 0.3f);  // rev_m is still ~0.41 m -- nowhere near zero
+    CHECK(t.dir_forward);             // re-armed on forward evidence alone
+    CHECK(t.rev_m > cfg.dir_flip_m);  // ...while rev_m (~0.70 m) is still above dir_flip_m
     CHECK(t.policy_ok);
 
     // the accumulator is capped, so recovery never needs more than cap of forward travel
     for (int i = 0; i < 1000; i++) {
         agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
     }
-    // the direction latch re-arms long before the fade policy recovers: at
-    // 1.10 m forward (well short of the 1.61 m a full drain needs),
-    // dir_forward is already true while rev_m is still ~0.50 m and
-    // policy_ok is still false -- the two evidences are independent, by
-    // design
-    for (int i = 0; i < 110; i++) {
+    // the direction latch re-arms on ~AGR_REARM_M of forward evidence alone,
+    // even from the deepest possible reversal (rev_m pinned at its cap):
+    // dir_forward is already true after just 0.20 m forward while rev_m is
+    // still ~1.40 m (nowhere near the flip threshold, let alone drained) and
+    // the fade policy is still false -- the two evidences are fully
+    // independent, not merely re-armed-early-by-coincidence
+    for (int i = 0; i < 20; i++) {  // 0.20 m forward: past AGR_REARM_M (0.15) with float margin
         agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
     CHECK(t.dir_forward);
-    CHECK(t.rev_m > 0.4f);
+    CHECK(t.rev_m > 1.3f);
     CHECK(!t.policy_ok);
-    for (int i = 0; i < 51; i++) {  // remaining travel to fully drain rev_m and clear policy_ok
+    for (int i = 0; i < 141; i++) {  // remaining travel to fully drain rev_m and clear policy_ok
         agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
     CHECK(t.rev_m == 0.0f);

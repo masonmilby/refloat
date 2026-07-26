@@ -80,11 +80,15 @@ void agr_trust_update(
         t->fwd_m = fminf(t->fwd_m + dist_delta_m, AGR_REARM_M);
     }
 
+    // forward evidence must win outright: checking rev_m first would make
+    // the re-arm unreachable while rev_m > flip, forcing the latch to wait
+    // for the drawdown to recede to flip on its own -- exactly the
+    // full-drain-shaped wait this accumulator split was meant to eliminate
     float flip = fminf(cfg->dir_flip_m, cfg->reverse_fade_m);
-    if (t->rev_m > flip) {
-        t->dir_forward = false;
-    } else if (t->fwd_m >= AGR_REARM_M) {
+    if (t->fwd_m >= AGR_REARM_M) {
         t->dir_forward = true;
+    } else if (t->rev_m > flip) {
+        t->dir_forward = false;
     }
 
     // fade policy unchanged
