@@ -48,6 +48,7 @@ void agr_init(AGR *agr) {
 }
 
 void agr_reset(AGR *agr) {
+    agr->sim_active = false;
     agr_profile_init(&agr->profile);
     agr_trust_init(&agr->trust);
     agr_cond_reset(&agr->cond);

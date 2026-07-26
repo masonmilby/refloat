@@ -16,5 +16,12 @@ int main(void) {
     // default-config output is zero
     CHECK(agr.setpoint == 0.0f);
 
+    // agr_sim must not survive engage: agr_reset runs on every engage
+    agr_init(&agr);
+    agr.sim_active = true;
+    agr.sim_grade = 0.2f;
+    agr_reset(&agr);
+    CHECK(!agr.sim_active);
+
     T_REPORT();
 }
