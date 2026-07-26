@@ -87,6 +87,7 @@ void agr_configure(AGR *agr, const RefloatConfig *config, float frequency) {
     agr->tuning.fade_rate = config->agr_fade_rate;
     agr->tuning.reverse_fade_m = config->agr_reverse_fade_m;
     agr->tuning.dir_flip_m = config->agr_dir_flip_m;
+    agr->tuning.rearm_m = config->agr_rearm_m;
     agr->tuning.rate_limit = config->agr_rate_limit;
     agr_cond_configure(&agr->cond, config->agr_filter, frequency);
 }

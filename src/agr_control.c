@@ -77,7 +77,7 @@ void agr_trust_update(
     if (dist_delta_m < 0.0f) {
         t->fwd_m = 0.0f;
     } else {
-        t->fwd_m = fminf(t->fwd_m + dist_delta_m, AGR_REARM_M);
+        t->fwd_m = fminf(t->fwd_m + dist_delta_m, cfg->rearm_m);
     }
 
     // forward evidence must win outright: checking rev_m first would make
@@ -85,7 +85,7 @@ void agr_trust_update(
     // for the drawdown to recede to flip on its own -- exactly the
     // full-drain-shaped wait this accumulator split was meant to eliminate
     float flip = fminf(cfg->dir_flip_m, cfg->reverse_fade_m);
-    if (t->fwd_m >= AGR_REARM_M) {
+    if (t->fwd_m >= cfg->rearm_m) {
         t->dir_forward = true;
     } else if (t->rev_m > flip) {
         t->dir_forward = false;

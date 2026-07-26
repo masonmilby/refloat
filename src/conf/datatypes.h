@@ -334,6 +334,7 @@ typedef struct {
     float agr_dir_flip_m;
     float agr_stale_ms;
     float agr_residual_max;
+    float agr_rearm_m;
     float turntilt_strength;
     float turntilt_angle_limit;
     float turntilt_start_angle;

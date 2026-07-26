@@ -8,7 +8,6 @@
 
 #define AGR_SIGHT_WINDOW 64
 #define AGR_RESIDUAL_RECOVER 0.8f
-#define AGR_REARM_M 0.15f
 
 // plain-float mirror of the agr_* config params the control layer needs;
 // the glue layer fills it from RefloatConfig each configure()
@@ -21,6 +20,7 @@ typedef struct {
     float fade_rate;                         // 1/s
     float reverse_fade_m;
     float dir_flip_m;
+    float rearm_m;
     float rate_limit;  // deg/s
 } AgrTuning;
 

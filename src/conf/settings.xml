@@ -2806,7 +2806,7 @@ p, li { white-space: pre-wrap; }
             <longName>AGR Direction Flip Distance</longName>
             <type>1</type>
             <transmittable>1</transmittable>
-            <description>Net reverse travel before AGR treats the board as travelling backwards and swaps the nose-up/nose-down limits. Above any standstill rock-back, below a deliberate reverse.</description>
+            <description>Reverse distance to swap nose limits.</description>
             <cDefine>CFG_DFLT_AGR_DIR_FLIP_M</cDefine>
             <editorDecimalsDouble>2</editorDecimalsDouble>
             <editorScale>1</editorScale>
@@ -2824,7 +2824,7 @@ p, li { white-space: pre-wrap; }
             <longName>AGR Staleness Timeout</longName>
             <type>1</type>
             <transmittable>1</transmittable>
-            <description>Range-stream silence before AGR fades out. Must exceed the sensor node's frame interval: at the node's default 250 Hz that is 4 ms, but a reconfigured node at 10 Hz needs at least 100 ms here.</description>
+            <description>Range silence before AGR fades out.</description>
             <cDefine>CFG_DFLT_AGR_STALE_MS</cDefine>
             <editorDecimalsDouble>0</editorDecimalsDouble>
             <editorScale>1</editorScale>
@@ -2842,7 +2842,7 @@ p, li { white-space: pre-wrap; }
             <longName>AGR Fit Residual Ceiling</longName>
             <type>1</type>
             <transmittable>1</transmittable>
-            <description>Terrain-fit residual above which AGR stops trusting the fit. Raise on rough ground, lower on smooth. Recovery is at 80% of this value.</description>
+            <description>Fit-residual ceiling; raise if rough.</description>
             <cDefine>CFG_DFLT_AGR_RESIDUAL_MAX</cDefine>
             <editorDecimalsDouble>3</editorDecimalsDouble>
             <editorScale>1</editorScale>
@@ -2856,6 +2856,24 @@ p, li { white-space: pre-wrap; }
             <suffix> m</suffix>
             <vTx>7</vTx>
         </agr_residual_max>
+        <agr_rearm_m>
+            <longName>AGR Direction Re-arm Distance</longName>
+            <type>1</type>
+            <transmittable>1</transmittable>
+            <description>Re-arm distance; larger extends the loose nose-down window.</description>
+            <cDefine>CFG_DFLT_AGR_REARM_M</cDefine>
+            <editorDecimalsDouble>2</editorDecimalsDouble>
+            <editorScale>1</editorScale>
+            <editAsPercentage>0</editAsPercentage>
+            <maxDouble>0.30</maxDouble>
+            <minDouble>0.05</minDouble>
+            <showDisplay>0</showDisplay>
+            <stepDouble>0.01</stepDouble>
+            <valDouble>0.15</valDouble>
+            <vTxDoubleScale>100</vTxDoubleScale>
+            <suffix> m</suffix>
+            <vTx>7</vTx>
+        </agr_rearm_m>
         <turntilt_strength>
             <longName>Strength</longName>
             <type>1</type>
@@ -4602,6 +4620,7 @@ p, li { white-space: pre-wrap; }
         <ser>agr_dir_flip_m</ser>
         <ser>agr_stale_ms</ser>
         <ser>agr_residual_max</ser>
+        <ser>agr_rearm_m</ser>
     </SerOrder>
     <Grouping>
         <group>

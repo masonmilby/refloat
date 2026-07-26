@@ -10,6 +10,7 @@ static AgrTuning tun(void) {
         .taper_erpm = 0.0f,
         .sight_on = 0.5f, .sight_off = 0.3f, .residual_max = 0.03f,
         .fade_rate = 2.0f, .reverse_fade_m = 1.0f, .dir_flip_m = 0.6f,
+        .rearm_m = 0.15f,
         .rate_limit = 15.0f,
     };
     return c;
@@ -142,7 +143,7 @@ int main(void) {
     // the unmasked case: forward evidence alone must re-arm the latch even
     // while rev_m is still ABOVE dir_flip_m. Reverse to strictly between
     // dir_flip_m and reverse_fade_m (policy_ok stays true throughout), then
-    // roll forward past AGR_REARM_M: the latch must flip true on fwd_m's
+    // roll forward past cfg.rearm_m: the latch must flip true on fwd_m's
     // evidence, not wait for rev_m to first recede to the flip threshold on
     // its own -- that wait was the fix-round-3 bug (forward evidence was
     // checked second, so it could never win while rev_m > flip).
@@ -155,7 +156,7 @@ int main(void) {
     }
     CHECK(!t.dir_forward);
     CHECK(t.policy_ok);
-    for (int i = 0; i < 20; i++) {  // 0.20 m forward: past AGR_REARM_M (0.15) with float margin
+    for (int i = 0; i < 20; i++) {  // 0.20 m forward: past cfg.rearm_m (0.15) with float margin
         agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
     CHECK(t.dir_forward);             // re-armed on forward evidence alone
@@ -166,13 +167,13 @@ int main(void) {
     for (int i = 0; i < 1000; i++) {
         agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
     }
-    // the direction latch re-arms on ~AGR_REARM_M of forward evidence alone,
+    // the direction latch re-arms on ~cfg.rearm_m of forward evidence alone,
     // even from the deepest possible reversal (rev_m pinned at its cap):
     // dir_forward is already true after just 0.20 m forward while rev_m is
     // still ~1.40 m (nowhere near the flip threshold, let alone drained) and
     // the fade policy is still false -- the two evidences are fully
     // independent, not merely re-armed-early-by-coincidence
-    for (int i = 0; i < 20; i++) {  // 0.20 m forward: past AGR_REARM_M (0.15) with float margin
+    for (int i = 0; i < 20; i++) {  // 0.20 m forward: past cfg.rearm_m (0.15) with float margin
         agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
     CHECK(t.dir_forward);
