@@ -1476,6 +1476,9 @@ static void cmd_handtest(Data *d, unsigned char *cfg) {
         d->float_conf.tiltback_variable = 0;
         d->float_conf.fault_delay_pitch = 50;
         d->float_conf.fault_delay_roll = 50;
+        // AGR reads a tuning snapshot, not float_conf: re-snapshot or the
+        // zeroed strengths above have no effect
+        agr_configure(&d->agr, &d->float_conf, d->main_freq_tracker.filter_frequency);
     } else {
         read_cfg_from_eeprom(d);
         configure(d);
@@ -1943,6 +1946,7 @@ static void cmd_flywheel_toggle(Data *d, unsigned char *cfg, int len) {
     d->float_conf.tiltback_constant = 0;
     d->tiltback_variable_max_erpm = 0;
     d->tiltback_variable = 0;
+    agr_configure(&d->agr, &d->float_conf, d->main_freq_tracker.filter_frequency);
 }
 
 void flywheel_stop(Data *d) {
