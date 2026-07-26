@@ -234,7 +234,7 @@ void agr_update(
 
     int32_t since_rx = (int32_t) (time->now - agr->last_rx_tick);
     bool stale = since_rx > (int32_t) agr->timeout_ticks;
-    agr_trust_update(&agr->trust, &agr->fit, stale, motor->erpm, dd, &agr->tuning, dt);
+    agr_trust_update(&agr->trust, &agr->fit, stale, dd, &agr->tuning, dt);
 
     float raw = agr->fit.valid
         ? agr_law(&agr->fit, agr->trust.dir_forward, motor->abs_erpm, &agr->tuning)

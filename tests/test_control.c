@@ -26,17 +26,17 @@ int main(void) {
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&t, true);
     }
-    agr_trust_update(&t, &good, false, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     CHECK(t.sight_ok && t.trusted);
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&t, i % 4 == 0);  // 25% valid: below sight_off
     }
-    agr_trust_update(&t, &good, false, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     CHECK(!t.sight_ok && !t.trusted);
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&t, i % 5 != 0);  // 80% valid: above sight_on
     }
-    agr_trust_update(&t, &good, false, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     CHECK(t.sight_ok);
 
     // sight warm-up floor: fraction=1.0 but bits_n=10 (<32) must NOT latch
@@ -44,12 +44,12 @@ int main(void) {
     for (int i = 0; i < 10; i++) {
         agr_trust_sample(&t, true);
     }
-    agr_trust_update(&t, &good, false, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     CHECK(!t.sight_ok);  // bits_n=10 < AGR_SIGHT_WINDOW/2=32: still cold
     for (int i = 0; i < 30; i++) {
         agr_trust_sample(&t, true);
     }
-    agr_trust_update(&t, &good, false, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     CHECK(t.sight_ok);  // bits_n=40 >= 32 and fraction=1.0: latches
 
     // fade slews, never steps
@@ -57,58 +57,76 @@ int main(void) {
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&t, true);
     }
-    agr_trust_update(&t, &good, false, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     CHECK(t.fade < 0.01f);  // one tick: 2.0/s * 2ms = 0.004
     for (int i = 0; i < 300; i++) {
-        agr_trust_update(&t, &good, false, 1000.0f, 0.01f, &cfg, dt);
+        agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
     CHECK_NEAR(t.fade, 1.0f, 1e-3f);  // 0.6 s at 2.0/s
 
     // link stale kills trust
-    agr_trust_update(&t, &good, true, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &good, true, 0.01f, &cfg, dt);
     CHECK(!t.trusted);
 
-    // reverse policy: 1.0 m contiguous reverse trips; 0.25 m forward clears
+    // a sub-flip rock-back never inverts the direction latch
     agr_trust_init(&t);
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&t, true);
     }
-    for (int i = 0; i < 99; i++) {
-        agr_trust_update(&t, &good, false, -500.0f, -0.01f, &cfg, dt);
+    for (int i = 0; i < 50; i++) {  // 0.50 m back: the worst observed rock-back
+        agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
     }
-    CHECK(t.policy_ok);  // 0.99 m: not yet
-    agr_trust_update(&t, &good, false, -500.0f, -0.02f, &cfg, dt);
-    CHECK(!t.policy_ok);
-    for (int i = 0; i < 26; i++) {
-        agr_trust_update(&t, &good, false, 500.0f, 0.01f, &cfg, dt);
-    }
+    CHECK(t.dir_forward);
     CHECK(t.policy_ok);
-    // exact boundary: drive reverse_m to bit-exact 1.0 m then assert strict > not triggered
+
+    // forward travel drains the accumulator proportionally, no contiguity needed
+    for (int i = 0; i < 50; i++) {
+        agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
+    }
+    CHECK(t.rev_m == 0.0f);
+
+    // symmetric dither nets to zero rather than ratcheting
     agr_trust_init(&t);
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&t, true);
     }
-    for (int i = 0; i < 99; i++) {
-        agr_trust_update(&t, &good, false, -500.0f, -0.01f, &cfg, dt);
+    for (int cyc = 0; cyc < 20; cyc++) {
+        for (int i = 0; i < 30; i++) {
+            agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
+        }
+        for (int i = 0; i < 30; i++) {
+            agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
+        }
     }
-    // land reverse_m on exactly 1.0f: one tick of -(reverse_fade_m - reverse_m)
-    agr_trust_update(&t, &good, false, -500.0f, -(cfg.reverse_fade_m - t.reverse_m), &cfg, dt);
-    CHECK(t.policy_ok);  // trip is strict >: at exactly 1.0 m policy still ok
-    agr_trust_update(&t, &good, false, -500.0f, -0.001f, &cfg, dt);
-    CHECK(!t.policy_ok);  // one more tick over the limit trips it
-    // rocking never trips: ±0.3 m oscillation
+    CHECK(t.rev_m == 0.0f);
+    CHECK(t.dir_forward);
+    CHECK(t.policy_ok);
+
+    // genuine reverse flips the latch before the policy fades, never the reverse order
     agr_trust_init(&t);
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&t, true);
     }
-    for (int cyc = 0; cyc < 10; cyc++) {
-        for (int i = 0; i < 30; i++) {
-            agr_trust_update(&t, &good, false, -100.0f, -0.01f, &cfg, dt);
-        }
-        for (int i = 0; i < 30; i++) {
-            agr_trust_update(&t, &good, false, 100.0f, 0.01f, &cfg, dt);
-        }
+    for (int i = 0; i < 61; i++) {  // 0.61 m: past dir_flip_m (0.6), short of fade (1.0)
+        agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
     }
+    CHECK(!t.dir_forward);
+    CHECK(t.policy_ok);
+    for (int i = 0; i < 40; i++) {  // 1.01 m total: past reverse_fade_m
+        agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
+    }
+    CHECK(!t.policy_ok);
+
+    // the accumulator is capped, so recovery never needs more than cap of forward travel
+    for (int i = 0; i < 1000; i++) {
+        agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
+    }
+    CHECK(t.rev_m <= cfg.reverse_fade_m + cfg.dir_flip_m);
+    for (int i = 0; i < 161; i++) {
+        agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
+    }
+    CHECK(t.rev_m == 0.0f);
+    CHECK(t.dir_forward);
     CHECK(t.policy_ok);
 
     // fit gate hysteresis on residual
@@ -118,13 +136,13 @@ int main(void) {
     }
     AgrFit noisy = good;
     noisy.residual = 0.05f;  // over 0.03 ceiling
-    agr_trust_update(&t, &noisy, false, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &noisy, false, 0.01f, &cfg, dt);
     CHECK(!t.fit_ok);
     noisy.residual = 0.028f;  // under ceiling but over 0.8*ceiling: still off
-    agr_trust_update(&t, &noisy, false, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &noisy, false, 0.01f, &cfg, dt);
     CHECK(!t.fit_ok);
     noisy.residual = 0.02f;  // under recovery threshold
-    agr_trust_update(&t, &noisy, false, 1000.0f, 0.01f, &cfg, dt);
+    agr_trust_update(&t, &noisy, false, 0.01f, &cfg, dt);
     CHECK(t.fit_ok);
 
     // law: 20% grade = 11.31 deg; uphill forward: 0.3 * 11.31 = 3.39
@@ -199,13 +217,13 @@ int main(void) {
     }
     // bring fade up to 1
     for (int i = 0; i < 600; i++) {
-        agr_trust_update(&t, &good, false, 1000.0f, 0.01f, &cfg, dt);
+        agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
     CHECK_NEAR(t.fade, 1.0f, 1e-3f);
     // now go untrusted (stale) and let fade slew down
     float prev_fade = t.fade;
     for (int i = 0; i < 250; i++) {
-        agr_trust_update(&t, &good, true, 1000.0f, 0.01f, &cfg, dt);
+        agr_trust_update(&t, &good, true, 0.01f, &cfg, dt);
         CHECK(t.fade <= prev_fade + 1e-6f);  // never increases
         CHECK(t.fade >= 0.0f);               // never negative
         prev_fade = t.fade;
@@ -229,12 +247,12 @@ int main(void) {
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&z, true);
     }
-    agr_trust_update(&z, &good, false, 1000.0f, 0.01f, &zcfg, dt);
+    agr_trust_update(&z, &good, false, 0.01f, &zcfg, dt);
     CHECK(z.sight_ok);
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&z, false);  // fully blind
     }
-    agr_trust_update(&z, &good, false, 1000.0f, 0.01f, &zcfg, dt);
+    agr_trust_update(&z, &good, false, 0.01f, &zcfg, dt);
     CHECK(!z.sight_ok);
 
     // sight gate at exact equality: 16 valid samples / 64 window = 0.25 = sight_off
@@ -246,12 +264,12 @@ int main(void) {
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&te, true);  // latch sight_ok true
     }
-    agr_trust_update(&te, &good, false, 1000.0f, 0.01f, &cfg_exact, dt);
+    agr_trust_update(&te, &good, false, 0.01f, &cfg_exact, dt);
     CHECK(te.sight_ok);  // latched at 100%
     for (int i = 0; i < 64; i++) {
         agr_trust_sample(&te, i < 16);  // exactly 16 valid: 16/64 = 0.25
     }
-    agr_trust_update(&te, &good, false, 1000.0f, 0.01f, &cfg_exact, dt);
+    agr_trust_update(&te, &good, false, 0.01f, &cfg_exact, dt);
     CHECK(!te.sight_ok);  // exact tie must clear (inclusive toward distrust)
 
     T_REPORT();

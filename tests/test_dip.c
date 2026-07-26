@@ -72,7 +72,7 @@ static float cast_range(TerrainFn tz, const AgrGeometry *g, float wx, float pitc
 // one full pipeline tick at a fixed pitch; advances the profile by dd, conditions output
 static void pipeline_tick(
     TerrainFn tz, const AgrGeometry *geo, AgrProfile *prof, AgrTrust *trust, AgrCond *cond,
-    const AgrTuning *cfg, float wx, float pitch, float dd, float v, float dt, int tick
+    const AgrTuning *cfg, float wx, float pitch, float dd, float dt, int tick
 ) {
     if (tick % 2 == 0) {
         float r = cast_range(tz, geo, wx, pitch);
@@ -96,7 +96,7 @@ static void pipeline_tick(
     }
     agr_profile_advance(prof, dd);
     AgrFit fit = agr_profile_fit(prof);
-    agr_trust_update(trust, &fit, false, v * 1000.0f, dd, cfg, dt);
+    agr_trust_update(trust, &fit, false, dd, cfg, dt);
     float raw = fit.valid ? agr_law(&fit, trust->dir_forward, 5000.0f, cfg) : 0.0f;
     agr_cond_update(cond, raw, trust->fade, cfg, dt);
 }
@@ -110,7 +110,7 @@ int main(void) {
         .strength_up = 0.3f, .strength_down = 0.3f,
         .angle_limit_up = 8.0f, .angle_limit_down = 4.0f, .taper_erpm = 0.0f,
         .sight_on = 0.5f, .sight_off = 0.3f, .residual_max = 0.03f, .fade_rate = 2.0f,
-        .reverse_fade_m = 1.0f, .rate_limit = 15.0f,
+        .reverse_fade_m = 1.0f, .dir_flip_m = 0.6f, .rate_limit = 15.0f,
     };
     AgrProfile prof;
     AgrTrust trust;
@@ -167,7 +167,7 @@ int main(void) {
         }
         agr_profile_advance(&prof, dd);
         AgrFit fit = agr_profile_fit(&prof);
-        agr_trust_update(&trust, &fit, false, v * 1000.0f, dd, &cfg, dt);
+        agr_trust_update(&trust, &fit, false, dd, &cfg, dt);
         float raw = fit.valid ? agr_law(&fit, trust.dir_forward, 5000.0f, &cfg) : 0.0f;
         agr_cond_update(&cond, raw, trust.fade, &cfg, dt);
 
@@ -245,7 +245,7 @@ int main(void) {
             float dd = gdist - gprev;
             gprev = gdist;
             pipeline_tick(
-                terrain_down20, &geo, &sp_prof, &sp_trust, &sp_cond, &cfg, gwx, gpitch, dd, v, dt,
+                terrain_down20, &geo, &sp_prof, &sp_trust, &sp_cond, &cfg, gwx, gpitch, dd, dt,
                 gtick
             );
             if (!got_3m && traveled >= 3.0f) {
@@ -267,7 +267,7 @@ int main(void) {
         int stop_ticks = (int) (1.0f / dt);  // 1 s
         for (int k = 0; k < stop_ticks; k++) {
             pipeline_tick(
-                terrain_down20, &geo, &sp_prof, &sp_trust, &sp_cond, &cfg, gwx, gpitch, 0.0f, v, dt,
+                terrain_down20, &geo, &sp_prof, &sp_trust, &sp_cond, &cfg, gwx, gpitch, 0.0f, dt,
                 gtick
             );
             gtick++;

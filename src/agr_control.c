@@ -14,8 +14,7 @@ void agr_trust_init(AgrTrust *t) {
     t->policy_ok = true;
     t->trusted = false;
     t->fade = 0.0f;
-    t->reverse_m = 0.0f;
-    t->forward_m = 0.0f;
+    t->rev_m = 0.0f;
     t->dir_forward = true;
     t->valid_fraction = 0.0f;
 }
@@ -35,8 +34,7 @@ static float valid_fraction(const AgrTrust *t) {
 }
 
 void agr_trust_update(
-    AgrTrust *t, const AgrFit *fit, bool stale, float erpm, float dist_delta_m,
-    const AgrTuning *cfg, float dt
+    AgrTrust *t, const AgrFit *fit, bool stale, float dist_delta_m, const AgrTuning *cfg, float dt
 ) {
     t->link_ok = !stale;
 
@@ -55,27 +53,25 @@ void agr_trust_update(
         t->fit_ok = true;
     }
 
-    // debounced direction (gain selection)
-    if (erpm > AGR_DIR_DEBOUNCE_ERPM) {
-        t->dir_forward = true;
-    } else if (erpm < -AGR_DIR_DEBOUNCE_ERPM) {
+    // net reverse progress: one accumulator drives both the gain/limit selection
+    // and the fade policy, so they can never disagree. Net, so symmetric
+    // standstill dither cancels instead of ratcheting.
+    // dist_delta_m is finite- and magnitude-guarded by the caller.
+    float cap = cfg->reverse_fade_m + cfg->dir_flip_m;
+    t->rev_m = agr_clampf(t->rev_m - dist_delta_m, 0.0f, cap);
+
+    // the tight limit must govern the whole authority window, so the latch flips
+    // no later than the fade threshold
+    float flip = fminf(cfg->dir_flip_m, cfg->reverse_fade_m);
+    if (t->rev_m > flip) {
         t->dir_forward = false;
+    } else if (t->rev_m == 0.0f) {
+        t->dir_forward = true;
     }
 
-    // reverse policy: contiguous net reverse distance
-    if (dist_delta_m < 0.0f) {
-        t->reverse_m += -dist_delta_m;
-        t->forward_m = 0.0f;
-    } else {
-        // clearing requires CONTIGUOUS forward travel: any reverse tick re-arms — deliberate fail-safe against direction dither near standstill
-        t->forward_m += dist_delta_m;
-        if (t->forward_m >= AGR_REVERSE_CLEAR_M) {
-            t->reverse_m = 0.0f;
-        }
-    }
-    if (t->reverse_m > cfg->reverse_fade_m) {
+    if (t->rev_m > cfg->reverse_fade_m) {
         t->policy_ok = false;
-    } else if (t->reverse_m == 0.0f) {
+    } else if (t->rev_m == 0.0f) {
         t->policy_ok = true;
     }
 

@@ -8,8 +8,6 @@
 
 #define AGR_SIGHT_WINDOW 64
 #define AGR_RESIDUAL_RECOVER 0.8f
-#define AGR_REVERSE_CLEAR_M 0.25f
-#define AGR_DIR_DEBOUNCE_ERPM 100.0f
 
 // plain-float mirror of the agr_* config params the control layer needs;
 // the glue layer fills it from RefloatConfig each configure()
@@ -33,9 +31,9 @@ typedef struct {
     bool link_ok, sight_ok, fit_ok, policy_ok;
     bool trusted;
     float fade;  // 0..1, slewed
-    // reverse policy accumulators
-    float reverse_m, forward_m;
-    bool dir_forward;  // debounced travel direction
+    // net reverse progress: drives both gain selection and the fade policy
+    float rev_m;
+    bool dir_forward;
     float valid_fraction;
 } AgrTrust;
 
@@ -48,8 +46,7 @@ void agr_trust_init(AgrTrust *t);
 void agr_trust_sample(AgrTrust *t, bool valid);  // call once per received range slot
 // dist_delta_m: signed odometry this tick; stale: link timeout exceeded
 void agr_trust_update(
-    AgrTrust *t, const AgrFit *fit, bool stale, float erpm, float dist_delta_m,
-    const AgrTuning *cfg, float dt
+    AgrTrust *t, const AgrFit *fit, bool stale, float dist_delta_m, const AgrTuning *cfg, float dt
 );
 // raw law output (deg) from the fit; fit must be valid (caller gates)
 float agr_law(const AgrFit *fit, bool dir_forward, float abs_erpm, const AgrTuning *cfg);
