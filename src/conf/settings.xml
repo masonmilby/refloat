@@ -2674,7 +2674,7 @@ p, li { white-space: pre-wrap; }
             <minInt>0</minInt>
             <showDisplay>0</showDisplay>
             <stepInt>100</stepInt>
-            <valInt>0</valInt>
+            <valInt>500</valInt>
             <suffix> ERPM</suffix>
             <vTx>3</vTx>
         </agr_taper_erpm>
@@ -2724,7 +2724,7 @@ p, li { white-space: pre-wrap; }
             <editorScale>1</editorScale>
             <editAsPercentage>0</editAsPercentage>
             <maxDouble>10</maxDouble>
-            <minDouble>0.1</minDouble>
+            <minDouble>0.5</minDouble>
             <showDisplay>0</showDisplay>
             <stepDouble>0.1</stepDouble>
             <valDouble>2</valDouble>
@@ -2736,7 +2736,7 @@ p, li { white-space: pre-wrap; }
             <longName>AGR Reverse Fade</longName>
             <type>1</type>
             <transmittable>1</transmittable>
-            <description>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Contiguous reverse distance (m) before AGR fades. 2x worst observed rock-back.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</description>
+            <description>Net reverse travel before AGR fades; forward travel drains it.</description>
             <cDefine>CFG_DFLT_AGR_REVERSE_FADE_M</cDefine>
             <editorDecimalsDouble>1</editorDecimalsDouble>
             <editorScale>1</editorScale>
@@ -2778,7 +2778,7 @@ p, li { white-space: pre-wrap; }
             <editorScale>1</editorScale>
             <editAsPercentage>0</editAsPercentage>
             <maxDouble>50</maxDouble>
-            <minDouble>1</minDouble>
+            <minDouble>5</minDouble>
             <showDisplay>0</showDisplay>
             <stepDouble>1</stepDouble>
             <valDouble>15</valDouble>
@@ -4709,13 +4709,6 @@ p, li { white-space: pre-wrap; }
             <subgroup>
                 <subgroupName>AGR</subgroupName>
                 <subgroupParams>
-                    <param>::sep::Mount</param>
-                    <param>agr_mount_angle</param>
-                    <param>agr_mount_height</param>
-                    <param>agr_mount_fwd</param>
-                    <param>agr_mount_offset</param>
-                    <param>agr_range_bias</param>
-                    <param>agr_lag_ms</param>
                     <param>::sep::Response</param>
                     <param>agr_strength_up</param>
                     <param>agr_strength_down</param>
@@ -4725,12 +4718,23 @@ p, li { white-space: pre-wrap; }
                     <param>::sep::Trust</param>
                     <param>agr_sight_on</param>
                     <param>agr_sight_off</param>
+                    <param>agr_residual_max</param>
                     <param>agr_fade_rate</param>
                     <param>agr_reverse_fade_m</param>
+                    <param>agr_dir_flip_m</param>
+                    <param>agr_rearm_m</param>
+                    <param>agr_stale_ms</param>
                     <param>::sep::Conditioning</param>
                     <param>agr_filter</param>
                     <param>agr_rate_limit</param>
+                    <param>::sep::Mount</param>
+                    <param>agr_mount_angle</param>
+                    <param>agr_mount_height</param>
+                    <param>agr_mount_fwd</param>
+                    <param>agr_mount_offset</param>
                     <param>::sep::Sensor</param>
+                    <param>agr_range_bias</param>
+                    <param>agr_lag_ms</param>
                     <param>agr_can_id</param>
                 </subgroupParams>
             </subgroup>
