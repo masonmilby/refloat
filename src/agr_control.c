@@ -53,9 +53,14 @@ void agr_trust_update(
         t->fit_ok = true;
     }
 
-    // net reverse progress: one accumulator drives both the gain/limit selection
-    // and the fade policy, so they can never disagree. Net, so symmetric
-    // standstill dither cancels instead of ratcheting.
+    // rev_m is a drawdown: distance below the running forward-most position,
+    // clamped to [0, cap] — not a net-since-init sum, so symmetric dither
+    // holds it at the current excursion rather than returning it to zero.
+    // One accumulator does guarantee the gain/limit latch and the fade policy
+    // read the same number, so they can never disagree; and because every
+    // forward tick reduces rev_m directly, with no separate contiguity
+    // counter for a reverse tick to reset, it cannot ratchet upward without
+    // bound the way the old dual-accumulator scheme could.
     // dist_delta_m is finite- and magnitude-guarded by the caller.
     float cap = cfg->reverse_fade_m + cfg->dir_flip_m;
     t->rev_m = agr_clampf(t->rev_m - dist_delta_m, 0.0f, cap);

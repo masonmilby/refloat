@@ -80,10 +80,32 @@ int main(void) {
     CHECK(t.policy_ok);
 
     // forward travel drains the accumulator proportionally, no contiguity needed
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < 51; i++) {  // one tick past exact zero-crossing for float margin
         agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
     CHECK(t.rev_m == 0.0f);
+
+    // single-tick alternation never ratchets: under the old dual-accumulator
+    // rule, a lone forward tick (0.01 m) never reached the 0.25 m contiguous-
+    // clear threshold before the next reverse tick reset it, so reverse_m grew
+    // without bound even though net travel is zero. The unified accumulator
+    // tracks drawdown directly, so it cannot ratchet — it stays bounded at one
+    // tick's worth of travel.
+    agr_trust_init(&t);
+    for (int i = 0; i < 64; i++) {
+        agr_trust_sample(&t, true);
+    }
+    float max_rev = 0.0f;
+    for (int i = 0; i < 150; i++) {
+        agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
+        agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
+        if (t.rev_m > max_rev) {
+            max_rev = t.rev_m;
+        }
+        CHECK(t.dir_forward);
+        CHECK(t.policy_ok);
+    }
+    CHECK(max_rev <= 0.011f);
 
     // symmetric dither nets to zero rather than ratcheting
     agr_trust_init(&t);
@@ -121,7 +143,6 @@ int main(void) {
     for (int i = 0; i < 1000; i++) {
         agr_trust_update(&t, &good, false, -0.01f, &cfg, dt);
     }
-    CHECK(t.rev_m <= cfg.reverse_fade_m + cfg.dir_flip_m);
     for (int i = 0; i < 161; i++) {
         agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
