@@ -21,7 +21,7 @@ int main(void) {
     // agr_sim must not survive engage: agr_reset runs on every engage
     agr_init(&agr);
     agr.sim_active = true;
-    agr.sim_grade = 0.2f;
+    agr.sim_grade_tan = 0.2f;
     agr_reset(&agr);
     CHECK(!agr.sim_active);
 

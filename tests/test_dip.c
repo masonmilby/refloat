@@ -1,5 +1,6 @@
 // forks/refloat/tests/test_dip.c — the spec's benchmark scenario, synthetic
-// Check-count note: ~1900 of the checks are per-tick setpoint-bounds assertions; the pinned signature itself is the ~11 scalar assertions at the tails.
+// Check-count note: ~1900 of the checks are per-tick setpoint-bounds assertions; the pinned
+// signature itself is the ~11 scalar assertions at the tails.
 //
 // Chord-driven advection gives sustained-grade hold: on a uniform slope the
 // advection height-decomposition uses the chord from the contact patch (0,0) to
@@ -58,10 +59,10 @@ static float terrain_down20(float x) {
 
 // cast the sensor ray from world position against the given terrain (linear search)
 static float cast_range(TerrainFn tz, const AgrGeometry *g, float wx, float pitch) {
-    float a = g->mount_height - TEST_WHEEL_RADIUS_M;
-    float sx = wx + g->mount_fwd * cosf(pitch) - a * sinf(pitch);
-    float sz = tz(wx) + TEST_WHEEL_RADIUS_M + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
-    float delta = g->mount_angle - pitch;
+    float a = g->mount_height_m - TEST_WHEEL_RADIUS_M;
+    float sx = wx + g->mount_fwd_m * cosf(pitch) - a * sinf(pitch);
+    float sz = tz(wx) + TEST_WHEEL_RADIUS_M + g->mount_fwd_m * sinf(pitch) + a * cosf(pitch);
+    float delta = g->mount_angle_rad - pitch;
     float dx = cosf(delta), dz = -sinf(delta);
     for (float t = 0.05f; t < 12.0f; t += 0.005f) {
         if (sz + t * dz <= tz(sx + t * dx)) {
@@ -73,8 +74,17 @@ static float cast_range(TerrainFn tz, const AgrGeometry *g, float wx, float pitc
 
 // one full pipeline tick at a fixed pitch; advances the profile by dd, conditions output
 static void pipeline_tick(
-    TerrainFn tz, const AgrGeometry *geo, AgrProfile *prof, AgrTrust *trust, AgrCond *cond,
-    const AgrTuning *cfg, float wx, float pitch, float dd, float dt, int tick
+    TerrainFn tz,
+    const AgrGeometry *geo,
+    AgrProfile *prof,
+    AgrTrust *trust,
+    AgrCond *cond,
+    const AgrTuning *cfg,
+    float wx,
+    float pitch,
+    float dd,
+    float dt,
+    int tick
 ) {
     if (tick % 2 == 0) {
         float r = cast_range(tz, geo, wx, pitch);
@@ -84,10 +94,10 @@ static void pipeline_tick(
             AgrGroundPoint pt = agr_locate(geo, pitch, r);
             if (pt.ok) {
                 if (pt.x <= AGR_AHEAD_M) {
-                    float a = geo->mount_height - TEST_WHEEL_RADIUS_M;
-                    float sx0 = geo->mount_fwd * cosf(pitch) - a * sinf(pitch);
+                    float a = geo->mount_height_m - TEST_WHEEL_RADIUS_M;
+                    float sx0 = geo->mount_fwd_m * cosf(pitch) - a * sinf(pitch);
                     float sz0 =
-                        TEST_WHEEL_RADIUS_M + geo->mount_fwd * sinf(pitch) + a * cosf(pitch);
+                        TEST_WHEEL_RADIUS_M + geo->mount_fwd_m * sinf(pitch) + a * cosf(pitch);
                     agr_profile_clear_ray(prof, sx0, sz0, pt.x, pt.z);
                     agr_profile_insert(prof, pt.x, pt.z, 1.0f);
                 } else {
@@ -105,15 +115,27 @@ static void pipeline_tick(
 
 int main(void) {
     AgrGeometry geo = {
-        .mount_angle = 13.0f * AGR_DEG2RAD, .mount_offset = 0.0f,
-        .mount_height = 0.175f, .mount_fwd = 0.35f, .range_bias = 0.0f,
-        .wheel_radius = TEST_WHEEL_RADIUS_M,
+        .mount_angle_rad = 13.0f * AGR_DEG2RAD,
+        .mount_offset_rad = 0.0f,
+        .mount_height_m = 0.175f,
+        .mount_fwd_m = 0.35f,
+        .range_bias_m = 0.0f,
+        .wheel_radius_m = TEST_WHEEL_RADIUS_M,
     };
     AgrTuning cfg = {
-        .strength_up = 0.3f, .strength_down = 0.3f,
-        .angle_limit_up = 8.0f, .angle_limit_down = 4.0f, .taper_erpm = 0.0f,
-        .sight_on = 0.5f, .sight_off = 0.3f, .residual_max = 0.03f, .fade_rate = 2.0f,
-        .reverse_fade_m = 1.0f, .dir_flip_m = 0.6f, .rearm_m = 0.15f, .rate_limit = 15.0f,
+        .strength_up = 0.3f,
+        .strength_down = 0.3f,
+        .angle_limit_up_deg = 8.0f,
+        .angle_limit_down_deg = 4.0f,
+        .taper_erpm = 0.0f,
+        .sight_on = 0.5f,
+        .sight_off = 0.3f,
+        .residual_max_m = 0.03f,
+        .fade_rate_per_s = 2.0f,
+        .reverse_fade_m = 1.0f,
+        .dir_flip_m = 0.6f,
+        .rearm_m = 0.15f,
+        .rate_limit_deg_s = 15.0f,
     };
     AgrProfile prof;
     AgrTrust trust;
@@ -124,7 +146,7 @@ int main(void) {
     agr_cond_configure(&cond, 10.0f, 500.0f);
 
     const float v = 6.7f, dt = 0.002f;  // 15 mph at 500 Hz
-    float wx = -8.0f;                   // world x; flat starts at 0, wall base at 4
+    float wx = -8.0f;  // world x; flat starts at 0, wall base at 4
     float prev_dist = 0.0f, dist = 0.0f;
 
     // captured setpoints across the dip
@@ -140,7 +162,7 @@ int main(void) {
 
     while (wx < 4.5f) {
         float slope = terrain_slope(wx);
-        float pitch = atanf(slope);              // deck parallel to local ground
+        float pitch = atanf(slope);  // deck parallel to local ground
         float ds = v * dt * cosf(atanf(slope));  // horizontal advance
         wx += ds;
         dist += v * dt;  // wheel odometry = arc length
@@ -156,10 +178,10 @@ int main(void) {
                 AgrGroundPoint pt = agr_locate(&geo, pitch, r);
                 if (pt.ok) {
                     if (pt.x <= AGR_AHEAD_M) {
-                        float a = geo.mount_height - TEST_WHEEL_RADIUS_M;
-                        float sx0 = geo.mount_fwd * cosf(pitch) - a * sinf(pitch);
-                        float sz0 = TEST_WHEEL_RADIUS_M + geo.mount_fwd * sinf(pitch) +
-                                    a * cosf(pitch);
+                        float a = geo.mount_height_m - TEST_WHEEL_RADIUS_M;
+                        float sx0 = geo.mount_fwd_m * cosf(pitch) - a * sinf(pitch);
+                        float sz0 =
+                            TEST_WHEEL_RADIUS_M + geo.mount_fwd_m * sinf(pitch) + a * cosf(pitch);
                         agr_profile_clear_ray(&prof, sx0, sz0, pt.x, pt.z);
                         agr_profile_insert(&prof, pt.x, pt.z, 1.0f);
                     } else {
@@ -201,8 +223,8 @@ int main(void) {
             fade_at_sp2 = trust.fade;
             captured[2] = true;
         }
-        CHECK(cond.setpoint <= cfg.angle_limit_up + 1e-3f);
-        CHECK(cond.setpoint >= -cfg.angle_limit_down - 1e-3f);
+        CHECK(cond.setpoint <= cfg.angle_limit_up_deg + 1e-3f);
+        CHECK(cond.setpoint >= -cfg.angle_limit_down_deg - 1e-3f);
         tick++;
     }
 
@@ -216,7 +238,7 @@ int main(void) {
     CHECK(sp_at[2] > sp_at[1] + 0.3f);
     CHECK(sp_at[2] > 0.5f);
     // the 20% corner residual stays under the fit ceiling, so trust never dips
-    CHECK(max_corner_res < cfg.residual_max);
+    CHECK(max_corner_res < cfg.residual_max_m);
     CHECK(fade_at_sp2 >= 0.99f);
 
     // ---- sustained grade hold ----
@@ -248,7 +270,16 @@ int main(void) {
             float dd = gdist - gprev;
             gprev = gdist;
             pipeline_tick(
-                terrain_down20, &geo, &sp_prof, &sp_trust, &sp_cond, &cfg, gwx, gpitch, dd, dt,
+                terrain_down20,
+                &geo,
+                &sp_prof,
+                &sp_trust,
+                &sp_cond,
+                &cfg,
+                gwx,
+                gpitch,
+                dd,
+                dt,
                 gtick
             );
             if (!got_3m && traveled >= 3.0f) {
@@ -270,7 +301,16 @@ int main(void) {
         int stop_ticks = (int) (1.0f / dt);  // 1 s
         for (int k = 0; k < stop_ticks; k++) {
             pipeline_tick(
-                terrain_down20, &geo, &sp_prof, &sp_trust, &sp_cond, &cfg, gwx, gpitch, 0.0f, dt,
+                terrain_down20,
+                &geo,
+                &sp_prof,
+                &sp_trust,
+                &sp_cond,
+                &cfg,
+                gwx,
+                gpitch,
+                0.0f,
+                dt,
                 gtick
             );
             gtick++;

@@ -1,4 +1,3 @@
-// forks/refloat/src/agr_profile.c
 #include "agr_profile.h"
 
 void agr_profile_init(AgrProfile *p) {
@@ -25,7 +24,6 @@ void agr_profile_insert(AgrProfile *p, float x, float z, float w) {
     if (i < 0 || w <= 0.0f) {
         return;
     }
-    // context outlier check: weighted mean of established neighbors (±3 cells)
     float nz = 0.0f, nw = 0.0f;
     int n_est = 0;
     for (int j = i - 3; j <= i + 3; j++) {
@@ -45,8 +43,6 @@ void agr_profile_insert(AgrProfile *p, float x, float z, float w) {
     float tw = c->w + w;
     c->z = (c->z * c->w + z * w) / tw;
     c->w = tw > AGR_CELL_W_CAP ? AGR_CELL_W_CAP : tw;
-    // chord from contact (0,0) to this fresh near sample drives advection dz;
-    // skip very-near/behind samples where z/x is noise-amplified. far hits never reach here.
     if (x > 0.20f) {
         p->chord_x = x;
         p->chord_z = z;
@@ -59,7 +55,6 @@ void agr_profile_clear_ray(AgrProfile *p, float x0, float z0, float x1, float z1
         return;
     }
     float inv_dx = 1.0f / (x1 - x0);
-    // exclusivity is cell-center based: the hit's own cell is swept when the hit lands past its center (harmless below ~45 deg slopes — poke stays under the margin)
     for (int i = 0; i < AGR_CELLS; i++) {
         float x = agr_cell_x(i);
         if (x <= x0 || x >= x1 || p->cell[i].w <= 0.0f) {
@@ -97,7 +92,6 @@ float agr_profile_grade_at(const AgrProfile *p, float x, bool *ok) {
     return (sxz - sx * sz / sw) / det;
 }
 
-// shift the buffer one cell toward the board (forward travel)
 static void shift_fwd(AgrProfile *p, float dz) {
     for (int i = 0; i < AGR_CELLS - 1; i++) {
         p->cell[i] = p->cell[i + 1];
@@ -122,7 +116,7 @@ void agr_profile_far_hit(AgrProfile *p, float x, float z) {
         return;
     }
     if (p->far_hits > 0 && fabsf(z - p->far_z) > AGR_FAR_DZ) {
-        p->far_hits = 0;  // inconsistent: restart persistence
+        p->far_hits = 0;
     }
     p->far_x = x;
     p->far_z = z;
@@ -136,12 +130,14 @@ void agr_profile_far_reset(AgrProfile *p) {
 }
 
 AgrFit agr_profile_fit(const AgrProfile *p) {
-    AgrFit f = {.valid = false,
-                .slope = 0.0f,
-                .residual = 0.0f,
-                .weight = 0.0f,
-                .near_weight = 0.0f,
-                .span = 0.0f};
+    AgrFit f = {
+        .valid = false,
+        .slope = 0.0f,
+        .residual = 0.0f,
+        .weight = 0.0f,
+        .near_weight = 0.0f,
+        .span = 0.0f
+    };
     float sw = 0.0f, sx = 0.0f, sz = 0.0f, sxx = 0.0f, sxz = 0.0f;
     float x_min = 1e9f, x_max = -1e9f;
     for (int i = 0; i < AGR_CELLS; i++) {
@@ -162,8 +158,6 @@ AgrFit agr_profile_fit(const AgrProfile *p) {
             x_max = x;
         }
     }
-    // cells must clear both floors on their own — the far point sweetens an
-    // already-valid near fit, it never validates one
     if (sw < AGR_FIT_MIN_W) {
         return f;
     }
@@ -172,8 +166,8 @@ AgrFit agr_profile_fit(const AgrProfile *p) {
     if (f.span < AGR_FIT_MIN_SPAN) {
         return f;
     }
-    bool far = p->far_hits >= AGR_FAR_PERSIST && p->far_x > AGR_AHEAD_M &&
-               p->far_x <= AGR_FAR_MAX_M;
+    bool far =
+        p->far_hits >= AGR_FAR_PERSIST && p->far_x > AGR_AHEAD_M && p->far_x <= AGR_FAR_MAX_M;
     if (far) {
         float w = AGR_FAR_W, x = p->far_x, z = p->far_z;
         sw += w;
@@ -188,7 +182,6 @@ AgrFit agr_profile_fit(const AgrProfile *p) {
     }
     f.slope = (sxz - sx * sz / sw) / det;
     float intercept = (sz - f.slope * sx) / sw;
-    // weighted RMS residual
     float sse = 0.0f;
     for (int i = 0; i < AGR_CELLS; i++) {
         if (p->cell[i].w <= 0.0f) {
@@ -211,8 +204,6 @@ void agr_profile_advance(AgrProfile *p, float dist_m) {
     p->frac_m += dist_m;
     while (p->frac_m >= AGR_CELL_M || p->frac_m <= -AGR_CELL_M) {
         bool fwd = p->frac_m > 0.0f;
-        // chord slope (contact→fresh near sample) is instantaneous and terrain-true
-        // on uniform grade; grade_at is the rank-deficient fallback when the chord is stale
         float dz;
         if (p->chord_age < AGR_CHORD_STALE_SHIFTS && p->chord_x > 0.20f) {
             dz = (p->chord_z / p->chord_x) * AGR_CELL_M;
@@ -225,10 +216,10 @@ void agr_profile_advance(AgrProfile *p, float dist_m) {
             shift_fwd(p, dz);
             p->frac_m -= AGR_CELL_M;
             if (p->far_hits > 0) {
-                p->far_x -= AGR_CELL_M;  // the far hit advects too
+                p->far_x -= AGR_CELL_M;
                 p->far_z -= dz;
             }
-            p->chord_x -= AGR_CELL_M;  // chord point advects with the buffer
+            p->chord_x -= AGR_CELL_M;
             p->chord_z -= dz;
         } else {
             shift_back(p, dz);
@@ -243,7 +234,6 @@ void agr_profile_advance(AgrProfile *p, float dist_m) {
         if (p->chord_age < 255) {
             p->chord_age++;
         }
-        // a far point advected out of the trusted band carries a stale z — drop it
         if (p->far_hits > 0 && (p->far_x <= AGR_AHEAD_M || p->far_x > AGR_FAR_MAX_M)) {
             p->far_hits = 0;
         }

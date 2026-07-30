@@ -1,4 +1,3 @@
-// forks/refloat/src/agr_math.h — pure helpers for the host-testable AGR cores
 #pragma once
 
 #define AGR_DEG2RAD 0.017453293f
@@ -12,7 +11,6 @@ static inline float agr_signf(float v) {
     return v < 0.0f ? -1.0f : 1.0f;
 }
 
-// slew `*value` toward `target` by at most `step` (always positive)
 static inline void agr_slewf(float *value, float target, float step) {
     if (target > *value + step) {
         *value += step;

@@ -7,22 +7,22 @@
 
 static AgrGeometry flat_geo(void) {
     AgrGeometry g = {
-        .mount_angle = 13.0f * AGR_DEG2RAD,
-        .mount_offset = 0.0f,
-        .mount_height = 0.175f,
-        .mount_fwd = 0.35f,
-        .range_bias = 0.0f,
-        .wheel_radius = TEST_WHEEL_RADIUS_M,
+        .mount_angle_rad = 13.0f * AGR_DEG2RAD,
+        .mount_offset_rad = 0.0f,
+        .mount_height_m = 0.175f,
+        .mount_fwd_m = 0.35f,
+        .range_bias_m = 0.0f,
+        .wheel_radius_m = TEST_WHEEL_RADIUS_M,
     };
     return g;
 }
 
 // slant range a sensor with geometry g at pitch p would read on flat ground
 static float flat_range(const AgrGeometry *g, float pitch) {
-    float delta = g->mount_angle + g->mount_offset - pitch;
-    float a = g->mount_height - TEST_WHEEL_RADIUS_M;
-    float zs = TEST_WHEEL_RADIUS_M + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
-    return zs / sinf(delta) + g->range_bias;
+    float delta = g->mount_angle_rad + g->mount_offset_rad - pitch;
+    float a = g->mount_height_m - TEST_WHEEL_RADIUS_M;
+    float zs = TEST_WHEEL_RADIUS_M + g->mount_fwd_m * sinf(pitch) + a * cosf(pitch);
+    return zs / sinf(delta) + g->range_bias_m;
 }
 
 int main(void) {
@@ -35,7 +35,7 @@ int main(void) {
     CHECK_NEAR(agr_pitch_ring_at(&r, 0.0f), 0.09f, 1e-6f);
     CHECK_NEAR(agr_pitch_ring_at(&r, 1.0f), 0.08f, 1e-6f);
     CHECK_NEAR(agr_pitch_ring_at(&r, 2.5f), 0.065f, 1e-6f);  // interpolated
-    CHECK_NEAR(agr_pitch_ring_at(&r, 99.0f), 0.0f, 1e-6f);   // clamps to oldest
+    CHECK_NEAR(agr_pitch_ring_at(&r, 99.0f), 0.0f, 1e-6f);  // clamps to oldest
 
     // locate: flat-ground ranges land at z=0 across the pitch envelope
     AgrGeometry g = flat_geo();
@@ -48,7 +48,7 @@ int main(void) {
     }
 
     // range bias round-trips
-    g.range_bias = 0.03f;
+    g.range_bias_m = 0.03f;
     AgrGroundPoint pt = agr_locate(&g, 0.0f, flat_range(&g, 0.0f));
     CHECK(pt.ok);
     CHECK_NEAR(pt.z, 0.0f, 0.002f);
@@ -56,7 +56,7 @@ int main(void) {
     // sanity gates
     g = flat_geo();
     CHECK(!agr_locate(&g, 12.0f * AGR_DEG2RAD, 1.0f).ok);  // delta ~1 deg: near horizon
-    CHECK(!agr_locate(&g, 0.0f, 30.0f).ok);                // z way below: |z| > 2 m
+    CHECK(!agr_locate(&g, 0.0f, 30.0f).ok);  // z way below: |z| > 2 m
 
     // anchored to hand-computed values (NOT derived from the module's formulas):
     // pitch=0: sensor at (0.35, 0.175); r = 0.175/sin(13deg) = 0.7779467;
@@ -68,12 +68,12 @@ int main(void) {
     CHECK_NEAR(pt.z, 0.0f, 1e-3f);
 
     // r <= 0 after bias subtraction rejects
-    g.range_bias = 1.0f;
+    g.range_bias_m = 1.0f;
     CHECK(!agr_locate(&g, 0.0f, 0.5f).ok);
 
     // x < 0 gate (contrived behind-axle mount)
     g = flat_geo();
-    g.mount_fwd = -1.0f;
+    g.mount_fwd_m = -1.0f;
     CHECK(!agr_locate(&g, 0.0f, 0.05f).ok);
 
     // empty ring returns 0

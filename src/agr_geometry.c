@@ -1,4 +1,3 @@
-// forks/refloat/src/agr_geometry.c
 #include "agr_geometry.h"
 
 void agr_pitch_ring_init(AgrPitchRing *r) {
@@ -35,18 +34,17 @@ float agr_pitch_ring_at(const AgrPitchRing *r, float lag_ticks) {
 
 AgrGroundPoint agr_locate(const AgrGeometry *g, float pitch, float range_m) {
     AgrGroundPoint p = {.ok = false, .x = 0.0f, .z = 0.0f};
-    float delta = g->mount_angle + g->mount_offset - pitch;  // world depression
+    float delta = g->mount_angle_rad + g->mount_offset_rad - pitch;
     if (delta < AGR_MIN_DEPRESSION_RAD) {
-        return p;  // beam near/above horizon: cannot be ground
+        return p;
     }
-    float r = range_m - g->range_bias;
+    float r = range_m - g->range_bias_m;
     if (r <= 0.0f) {
         return p;
     }
-    // sensor origin: (mount_fwd, mount_height - R) deck frame, rotated about the axle
-    float a = g->mount_height - g->wheel_radius;
-    float xs = g->mount_fwd * cosf(pitch) - a * sinf(pitch);
-    float zs = g->wheel_radius + g->mount_fwd * sinf(pitch) + a * cosf(pitch);
+    float a = g->mount_height_m - g->wheel_radius_m;
+    float xs = g->mount_fwd_m * cosf(pitch) - a * sinf(pitch);
+    float zs = g->wheel_radius_m + g->mount_fwd_m * sinf(pitch) + a * cosf(pitch);
     p.x = xs + r * cosf(delta);
     p.z = zs - r * sinf(delta);
     if (p.x < 0.0f || fabsf(p.z) > 2.0f) {

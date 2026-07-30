@@ -1,4 +1,3 @@
-// forks/refloat/src/agr_cal_core.c
 #include "agr_cal_core.h"
 
 #include "agr_math.h"
@@ -7,8 +6,8 @@
 
 void agr_cal_sweep_init(AgrCalSweep *s) {
     for (int i = 0; i < AGR_CAL_BINS; i++) {
-        s->bin[i].sum_r = 0.0f;
-        s->bin[i].sum_r2 = 0.0f;
+        s->bin[i].sum_r_m = 0.0f;
+        s->bin[i].sum_r2_m2 = 0.0f;
         s->bin[i].n = 0;
     }
     s->active = false;
@@ -21,8 +20,8 @@ void agr_cal_sweep_add(AgrCalSweep *s, float pitch_rad, float range_m) {
         return;
     }
     if (s->bin[i].n < 65535) {
-        s->bin[i].sum_r += range_m;
-        s->bin[i].sum_r2 += range_m * range_m;
+        s->bin[i].sum_r_m += range_m;
+        s->bin[i].sum_r2_m2 += range_m * range_m;
         s->bin[i].n++;
     }
 }
@@ -33,20 +32,24 @@ static float bin_pitch_rad(int i) {
 
 static bool bin_usable(const AgrCalSweep *s, int i, float mount_angle_cad) {
     return s->bin[i].n >= AGR_CAL_MIN_N &&
-           (mount_angle_cad - bin_pitch_rad(i)) * AGR_RAD2DEG >= AGR_CAL_MIN_DELTA_DEG;
+        (mount_angle_cad - bin_pitch_rad(i)) * AGR_RAD2DEG >= AGR_CAL_MIN_DELTA_DEG;
 }
 
 float agr_cal_model(
-    float pitch, float mount_angle, float theta_err, float h, float f, float b, float wheel_radius
+    float pitch,
+    float mount_angle_rad,
+    float theta_err,
+    float h,
+    float f,
+    float b,
+    float wheel_radius_m
 ) {
-    float delta = mount_angle + theta_err - pitch;
-    float a = h - wheel_radius;
-    float zs = wheel_radius + f * sinf(pitch) + a * cosf(pitch);
+    float delta = mount_angle_rad + theta_err - pitch;
+    float a = h - wheel_radius_m;
+    float zs = wheel_radius_m + f * sinf(pitch) + a * cosf(pitch);
     return zs / sinf(delta) + b;
 }
 
-// solve 4x4 A x = y in place; expects A Jacobi-scaled to ~unit diagonal (see
-// agr_cal_fit), which keeps float precision sufficient; returns false if singular
 static bool solve4(float A[4][4], float y[4], float x[4]) {
     int idx[4] = {0, 1, 2, 3};
     for (int c = 0; c < 4; c++) {
@@ -80,9 +83,10 @@ static bool solve4(float A[4][4], float y[4], float x[4]) {
     return true;
 }
 
-AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float wheel_radius) {
-    AgrCalResult res = {.status = AGR_CAL_SINGULAR, .rms_m = 0.0f, .span_deg = 0.0f, .bins_used = 0};
-    // usable bins: enough samples AND world depression >= 8 deg at the prior
+AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float wheel_radius_m) {
+    AgrCalResult res = {
+        .status = AGR_CAL_SINGULAR, .rms_m = 0.0f, .span_deg = 0.0f, .bins_used = 0
+    };
     float p_min = 1e9f, p_max = -1e9f;
     int used = 0;
     for (int i = 0; i < AGR_CAL_BINS; i++) {
@@ -104,7 +108,6 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float whee
         res.status = AGR_CAL_COVERAGE;
         return res;
     }
-    // params: 0=h, 1=f, 2=theta_err(rad), 3=b — start at priors
     float prm[4] = {0.175f, 0.35f, 0.0f, 0.0f};
     const float eps[4] = {1e-4f, 1e-4f, 1e-5f, 1e-4f};
     for (int iter = 0; iter < AGR_CAL_GN_ITERS; iter++) {
@@ -116,13 +119,12 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float whee
             }
             float p = bin_pitch_rad(i);
             float w = (float) s->bin[i].n;
-            float r_meas = s->bin[i].sum_r / w;
-            float pred = agr_cal_model(
-                p, mount_angle_cad, prm[2], prm[0], prm[1], prm[3], wheel_radius
-            );
+            float r_meas = s->bin[i].sum_r_m / w;
+            float pred =
+                agr_cal_model(p, mount_angle_cad, prm[2], prm[0], prm[1], prm[3], wheel_radius_m);
             float resid = r_meas - pred;
             float J[4];
-            for (int k = 0; k < 4; k++) {  // central differences
+            for (int k = 0; k < 4; k++) {
                 float lo[4], hi[4];
                 for (int m = 0; m < 4; m++) {
                     lo[m] = prm[m];
@@ -130,12 +132,10 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float whee
                 }
                 lo[k] -= eps[k];
                 hi[k] += eps[k];
-                float f_lo = agr_cal_model(
-                    p, mount_angle_cad, lo[2], lo[0], lo[1], lo[3], wheel_radius
-                );
-                float f_hi = agr_cal_model(
-                    p, mount_angle_cad, hi[2], hi[0], hi[1], hi[3], wheel_radius
-                );
+                float f_lo =
+                    agr_cal_model(p, mount_angle_cad, lo[2], lo[0], lo[1], lo[3], wheel_radius_m);
+                float f_hi =
+                    agr_cal_model(p, mount_angle_cad, hi[2], hi[0], hi[1], hi[3], wheel_radius_m);
                 J[k] = (f_hi - f_lo) / (2.0f * eps[k]);
             }
             for (int a = 0; a < 4; a++) {
@@ -145,10 +145,6 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float whee
                 Jtr[a] += w * J[a] * resid;
             }
         }
-        // Jacobi-scale JtJ to unit diagonal: raw JtJ condition is ~1e9 from the
-        // (θ_err, b) aliasing at limited pitch spans, beyond float. On the scaled
-        // matrix the damping below becomes an absolute eigenvalue floor, bounding
-        // the solved system's condition near 4/0.001 — safely within float.
         float d[4];
         for (int k = 0; k < 4; k++) {
             if (JtJ[k][k] <= 0.0f) {
@@ -163,8 +159,6 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float whee
             }
             Jtr[a] /= d[a];
         }
-        // Levenberg-Marquardt damping: prevents divergence along the near-null
-        // (θ_err, b) direction.
         for (int k = 0; k < 4; k++) {
             JtJ[k][k] *= 1.001f;
         }
@@ -177,7 +171,6 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float whee
             prm[k] += step[k] / d[k];
         }
     }
-    // weighted RMS over used bins (per-bin means)
     float sse = 0.0f, wsum = 0.0f;
     for (int i = 0; i < AGR_CAL_BINS; i++) {
         if (!bin_usable(s, i, mount_angle_cad)) {
@@ -185,16 +178,16 @@ AgrCalResult agr_cal_fit(const AgrCalSweep *s, float mount_angle_cad, float whee
         }
         float p = bin_pitch_rad(i);
         float w = (float) s->bin[i].n;
-        float r = s->bin[i].sum_r / w -
-            agr_cal_model(p, mount_angle_cad, prm[2], prm[0], prm[1], prm[3], wheel_radius);
+        float r = s->bin[i].sum_r_m / w -
+            agr_cal_model(p, mount_angle_cad, prm[2], prm[0], prm[1], prm[3], wheel_radius_m);
         sse += w * r * r;
         wsum += w;
     }
     res.rms_m = sqrtf(sse / wsum);
-    res.mount_height = prm[0];
-    res.mount_fwd = prm[1];
+    res.mount_height_m = prm[0];
+    res.mount_fwd_m = prm[1];
     res.mount_offset_deg = prm[2] * AGR_RAD2DEG;
-    res.range_bias = prm[3];
+    res.range_bias_m = prm[3];
     res.status = res.rms_m <= AGR_CAL_MAX_RESID_M ? AGR_CAL_OK : AGR_CAL_RESIDUAL;
     return res;
 }
@@ -208,15 +201,19 @@ void agr_tau_init(AgrTauScan *t) {
 }
 
 void agr_tau_feed(
-    AgrTauScan *t, const AgrPitchRing *ring, const AgrGeometry *geo, float range_m,
-    float tick_hz
+    AgrTauScan *t, const AgrPitchRing *ring, const AgrGeometry *geo, float range_m, float tick_hz
 ) {
     for (int i = 0; i < AGR_TAU_CANDIDATES; i++) {
         float lag_ticks = (float) i * AGR_TAU_STEP_MS * tick_hz / 1000.0f;
         float p = agr_pitch_ring_at(ring, lag_ticks);
         float pred = agr_cal_model(
-            p, geo->mount_angle, geo->mount_offset, geo->mount_height, geo->mount_fwd,
-            geo->range_bias, geo->wheel_radius
+            p,
+            geo->mount_angle_rad,
+            geo->mount_offset_rad,
+            geo->mount_height_m,
+            geo->mount_fwd_m,
+            geo->range_bias_m,
+            geo->wheel_radius_m
         );
         float r = range_m - pred;
         t->sse[i] += r * r;

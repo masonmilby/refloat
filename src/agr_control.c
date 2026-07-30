@@ -1,4 +1,3 @@
-// forks/refloat/src/agr_control.c
 #include "agr_control.h"
 
 #include "agr_math.h"
@@ -46,43 +45,17 @@ void agr_trust_update(
         t->sight_ok = true;
     }
 
-    // fit validity is near-field-floored upstream (agr_profile_fit gates on
-    // cells-only weight and span): a far point alone can never carry trust
-    if (!fit->valid || fit->residual > cfg->residual_max) {
+    if (!fit->valid || fit->residual > cfg->residual_max_m) {
         t->fit_ok = false;
-    } else if (fit->residual <= cfg->residual_max * AGR_RESIDUAL_RECOVER) {
+    } else if (fit->residual <= cfg->residual_max_m * AGR_RESIDUAL_RECOVER) {
         t->fit_ok = true;
     }
 
-    // rev_m is a drawdown: distance below the running forward-most position,
-    // clamped to [0, cap] — not a net-since-init sum, so symmetric dither
-    // holds it at the current excursion rather than returning it to zero.
-    // dist_delta_m is finite- and magnitude-guarded by the caller.
-    //
-    // dir_forward has its own evidence (fwd_m, a run-up from the running
-    // minimum) rather than sharing rev_m: keying the latch's re-arm on rev_m
-    // alone would force it to wait for a full drain — as much forward travel
-    // as the reverse took — leaving the wrong (loose) nose-down limit
-    // selected the whole time. fwd_m re-arms after a small fixed distance
-    // instead, so the tight limit returns promptly regardless of how deep
-    // the reversal was; the fade policy (rev_m vs. reverse_fade_m) is
-    // unaffected and still needs a full drain to clear.
-
-    // policy evidence: net drawdown (unchanged)
     float cap = cfg->reverse_fade_m + cfg->dir_flip_m;
     t->rev_m = agr_clampf(t->rev_m - dist_delta_m, 0.0f, cap);
 
-    // direction evidence: run-up from the running minimum, clamped to
-    // [0, re-arm threshold]. A single backward tick only gives back that
-    // tick's distance rather than zeroing the run outright, so odometry
-    // dither (quantised tachometer steps) can't hold this at zero forever
-    // the way contiguity-counting did.
     t->fwd_m = agr_clampf(t->fwd_m + dist_delta_m, 0.0f, cfg->rearm_m);
 
-    // forward evidence must win outright: checking rev_m first would make
-    // the re-arm unreachable while rev_m > flip, forcing the latch to wait
-    // for the drawdown to recede to flip on its own -- exactly the
-    // full-drain-shaped wait this accumulator split was meant to eliminate
     float flip = fminf(cfg->dir_flip_m, cfg->reverse_fade_m);
     if (t->fwd_m >= cfg->rearm_m) {
         t->dir_forward = true;
@@ -90,7 +63,6 @@ void agr_trust_update(
         t->dir_forward = false;
     }
 
-    // fade policy unchanged
     if (t->rev_m > cfg->reverse_fade_m) {
         t->policy_ok = false;
     } else if (t->rev_m == 0.0f) {
@@ -98,17 +70,15 @@ void agr_trust_update(
     }
 
     t->trusted = t->link_ok && t->sight_ok && t->fit_ok && t->policy_ok;
-    agr_slewf(&t->fade, t->trusted ? 1.0f : 0.0f, cfg->fade_rate * dt);
+    agr_slewf(&t->fade, t->trusted ? 1.0f : 0.0f, cfg->fade_rate_per_s * dt);
 }
 
 float agr_law(const AgrFit *fit, bool dir_forward, float abs_erpm, const AgrTuning *cfg) {
     float g_cmd_deg = atanf(fit->slope) * AGR_RAD2DEG;
     bool uphill = dir_forward == (g_cmd_deg > 0.0f);
     float strength = uphill ? cfg->strength_up : cfg->strength_down;
-    // the tight limit always caps the travel-leading-end-down direction:
-    // board nose-down when forward, board nose-up when reverse
-    float lim_pos = dir_forward ? cfg->angle_limit_up : cfg->angle_limit_down;
-    float lim_neg = dir_forward ? cfg->angle_limit_down : cfg->angle_limit_up;
+    float lim_pos = dir_forward ? cfg->angle_limit_up_deg : cfg->angle_limit_down_deg;
+    float lim_neg = dir_forward ? cfg->angle_limit_down_deg : cfg->angle_limit_up_deg;
     float raw = agr_clampf(strength * g_cmd_deg, -lim_neg, lim_pos);
     if (cfg->taper_erpm > 0.0f) {
         float k = abs_erpm / cfg->taper_erpm;
@@ -134,9 +104,7 @@ void agr_cond_configure(AgrCond *c, float cutoff_hz, float frequency) {
 
 void agr_cond_update(AgrCond *c, float raw_deg, float fade, const AgrTuning *cfg, float dt) {
     ema_update(&c->ema, raw_deg * fade);
-    // the rate limit is the PRIMARY bound on far-point slow drift (persistence
-    // in the profile gates jitter only) — survival equipment, never feel
-    agr_slewf(&c->setpoint, c->ema.value, cfg->rate_limit * dt);
+    agr_slewf(&c->setpoint, c->ema.value, cfg->rate_limit_deg_s * dt);
 }
 
 void agr_cond_winddown(AgrCond *c) {

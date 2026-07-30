@@ -29,25 +29,35 @@ int main(void) {
     }
     AgrCalResult res = agr_cal_fit(&s, cad, TEST_WHEEL_RADIUS_M);
     CHECK(res.status == AGR_CAL_OK);
-    CHECK_NEAR(res.mount_height, h, 0.005f);
-    CHECK_NEAR(res.mount_fwd, f, 0.015f);
+    CHECK_NEAR(res.mount_height_m, h, 0.005f);
+    CHECK_NEAR(res.mount_fwd_m, f, 0.015f);
     // θe/b are jointly ill-conditioned over a flat-ground sweep (JtJ condition ~1e9);
     // Jacobi scaling + light damping handle it; individual recovery is seed-dependent
     // but locate-functional accuracy is bounded (see functional-equivalence test below).
     CHECK_NEAR(res.mount_offset_deg, 0.8f, 0.30f);
-    CHECK_NEAR(res.range_bias, b, 0.020f);
+    CHECK_NEAR(res.range_bias_m, b, 0.020f);
     CHECK(res.rms_m < 0.008f);
 
     // ---- functional equivalence: recovered params match truth through agr_locate ----
     // θe/b are individually ill-conditioned (condition ~1e9 over this sweep) but are
     // only ever consumed jointly via agr_locate; the contract is locate accuracy.
     {
-        AgrGeometry g_true = {.mount_angle = cad, .mount_offset = te,
-                              .mount_height = h, .mount_fwd = f, .range_bias = b,
-                              .wheel_radius = TEST_WHEEL_RADIUS_M};
-        AgrGeometry g_fit = {.mount_angle = cad, .mount_offset = res.mount_offset_deg * AGR_DEG2RAD,
-                             .mount_height = res.mount_height, .mount_fwd = res.mount_fwd,
-                             .range_bias = res.range_bias, .wheel_radius = TEST_WHEEL_RADIUS_M};
+        AgrGeometry g_true = {
+            .mount_angle_rad = cad,
+            .mount_offset_rad = te,
+            .mount_height_m = h,
+            .mount_fwd_m = f,
+            .range_bias_m = b,
+            .wheel_radius_m = TEST_WHEEL_RADIUS_M
+        };
+        AgrGeometry g_fit = {
+            .mount_angle_rad = cad,
+            .mount_offset_rad = res.mount_offset_deg * AGR_DEG2RAD,
+            .mount_height_m = res.mount_height_m,
+            .mount_fwd_m = res.mount_fwd_m,
+            .range_bias_m = res.range_bias_m,
+            .wheel_radius_m = TEST_WHEEL_RADIUS_M
+        };
         float max_dz = 0.0f;
         for (float pd = -6.0f; pd <= 6.0f; pd += 0.5f) {
             float p = pd * AGR_DEG2RAD;
@@ -57,7 +67,9 @@ int main(void) {
             AgrGroundPoint a_fit = agr_locate(&g_fit, p, r_true);
             if (a_true.ok && a_fit.ok) {
                 float dz = fabsf(a_fit.z - a_true.z);
-                if (dz > max_dz) max_dz = dz;
+                if (dz > max_dz) {
+                    max_dz = dz;
+                }
             }
         }
         CHECK(max_dz < 0.006f);  // reviewer-measured worst: 5.6 mm at +6° (seed 42)
@@ -147,10 +159,10 @@ int main(void) {
         AgrCalResult bad_res = agr_cal_fit(&with_bad, cad, TEST_WHEEL_RADIUS_M);
         CHECK(bad_res.status == AGR_CAL_OK);
         // Results must agree: the n=4 bin was excluded
-        CHECK_NEAR(bad_res.mount_height, ref_res.mount_height, 1e-4f);
-        CHECK_NEAR(bad_res.mount_fwd, ref_res.mount_fwd, 1e-4f);
+        CHECK_NEAR(bad_res.mount_height_m, ref_res.mount_height_m, 1e-4f);
+        CHECK_NEAR(bad_res.mount_fwd_m, ref_res.mount_fwd_m, 1e-4f);
         CHECK_NEAR(bad_res.mount_offset_deg, ref_res.mount_offset_deg, 1e-4f);
-        CHECK_NEAR(bad_res.range_bias, ref_res.range_bias, 1e-4f);
+        CHECK_NEAR(bad_res.range_bias_m, ref_res.range_bias_m, 1e-4f);
     }
 
     // SINGULAR path analysis:
@@ -182,7 +194,7 @@ int main(void) {
     // agr_cal_model(pitch, cad, te, h, f, b, TEST_WHEEL_RADIUS_M) and agr_locate must agree:
     // feeding the model's output range back into locate (with matching geometry)
     // must yield z ≈ 0 (on flat ground) within 2 mm.
-    // Reasoning: agr_locate computes r_internal = range - geo.range_bias
+    // Reasoning: agr_locate computes r_internal = range - geo.range_bias_m
     //   = (zs/sin(delta) + b) - b = zs/sin(delta)
     // then z = zs - r_internal * sin(delta) = zs - zs = 0. Exact by construction.
     {
@@ -192,12 +204,12 @@ int main(void) {
         // agr_locate uses mount_angle + mount_offset as total depression.
         // cad + te is the total angle; set mount_offset=te so the sum is correct.
         AgrGeometry geo = {
-            .mount_angle = cad,
-            .mount_offset = te,  // theta_err as offset
-            .mount_height = h,
-            .mount_fwd = f,
-            .range_bias = b,
-            .wheel_radius = TEST_WHEEL_RADIUS_M,
+            .mount_angle_rad = cad,
+            .mount_offset_rad = te,  // theta_err as offset
+            .mount_height_m = h,
+            .mount_fwd_m = f,
+            .range_bias_m = b,
+            .wheel_radius_m = TEST_WHEEL_RADIUS_M,
         };
         AgrGroundPoint pt = agr_locate(&geo, pitch, r);
         CHECK(pt.ok);
@@ -206,8 +218,14 @@ int main(void) {
 
     // --- tau scan: synthetic rocking with 20 ms true lag ---
     {
-        AgrGeometry geo = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
-                           .mount_fwd = f, .range_bias = b, .wheel_radius = TEST_WHEEL_RADIUS_M};
+        AgrGeometry geo = {
+            .mount_angle_rad = cad,
+            .mount_offset_rad = 0.0f,
+            .mount_height_m = h,
+            .mount_fwd_m = f,
+            .range_bias_m = b,
+            .wheel_radius_m = TEST_WHEEL_RADIUS_M
+        };
         AgrPitchRing ring;
         agr_pitch_ring_init(&ring);
         AgrTauScan tau;
@@ -233,8 +251,8 @@ int main(void) {
     }
 
     // --- live trim: converges against a planted offset error, clamps, freezes ---
-    // Model: g_cmd = planted_bias - trim (trim corrects subtractively through locate).
-    // Equilibrium: g_cmd = 0 -> trim = planted_bias = -0.3 deg.
+    // Model: g_cmd_deg = planted_bias - trim (trim corrects subtractively through locate).
+    // Equilibrium: g_cmd_deg = 0 -> trim = planted_bias = -0.3 deg.
     // TAU=600 s; run 5*TAU so trim reaches >99% of target (within 0.01 deg of -0.3).
     {
         float trim = 0.0f;
@@ -252,8 +270,14 @@ int main(void) {
 
     // --- tau: insufficient samples (n=400) returns -1 ---
     {
-        AgrGeometry geo2 = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
-                            .mount_fwd = f, .range_bias = b, .wheel_radius = TEST_WHEEL_RADIUS_M};
+        AgrGeometry geo2 = {
+            .mount_angle_rad = cad,
+            .mount_offset_rad = 0.0f,
+            .mount_height_m = h,
+            .mount_fwd_m = f,
+            .range_bias_m = b,
+            .wheel_radius_m = TEST_WHEEL_RADIUS_M
+        };
         AgrPitchRing ring2;
         agr_pitch_ring_init(&ring2);
         AgrTauScan tau2;
@@ -270,8 +294,14 @@ int main(void) {
 
     // --- tau at 0 ms lag: true lag 0 ticks -> result < 2 ms ---
     {
-        AgrGeometry geo3 = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
-                            .mount_fwd = f, .range_bias = b, .wheel_radius = TEST_WHEEL_RADIUS_M};
+        AgrGeometry geo3 = {
+            .mount_angle_rad = cad,
+            .mount_offset_rad = 0.0f,
+            .mount_height_m = h,
+            .mount_fwd_m = f,
+            .range_bias_m = b,
+            .wheel_radius_m = TEST_WHEEL_RADIUS_M
+        };
         AgrPitchRing ring3;
         agr_pitch_ring_init(&ring3);
         AgrTauScan tau3;
@@ -296,8 +326,14 @@ int main(void) {
     // parabolic interpolation is skipped (no right neighbor). The result is
     // exactly candidate 15's ms value = 60.0 ms (no interpolation at edge).
     {
-        AgrGeometry geo4 = {.mount_angle = cad, .mount_offset = 0.0f, .mount_height = h,
-                            .mount_fwd = f, .range_bias = b, .wheel_radius = TEST_WHEEL_RADIUS_M};
+        AgrGeometry geo4 = {
+            .mount_angle_rad = cad,
+            .mount_offset_rad = 0.0f,
+            .mount_height_m = h,
+            .mount_fwd_m = f,
+            .range_bias_m = b,
+            .wheel_radius_m = TEST_WHEEL_RADIUS_M
+        };
         AgrPitchRing ring4;
         agr_pitch_ring_init(&ring4);
         AgrTauScan tau4;
@@ -329,8 +365,8 @@ int main(void) {
         CHECK_NEAR(result, trim_frozen, 1e-6f);
     }
 
-    // --- trim sign pin: positive g_cmd bias converges to +0.3 ---
-    // Model: g_cmd = planted_bias - trim; equilibrium trim = +0.3 for bias = +0.3.
+    // --- trim sign pin: positive g_cmd_deg bias converges to +0.3 ---
+    // Model: g_cmd_deg = planted_bias - trim; equilibrium trim = +0.3 for bias = +0.3.
     {
         float trim = 0.0f;
         for (int i = 0; i < 500 * 3000; i++) {

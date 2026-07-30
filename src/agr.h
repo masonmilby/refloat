@@ -29,12 +29,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// esp_tof range frame: base+0, DLC 4, big-endian (ESP_ToF_SPEC.md section 4.1)
 #define AGR_FRAME_DLC 4
 #define AGR_NO_RETURN 0xFFFF
 #define AGR_RX_RING 4
-// sweep-abort threshold on net travel: rotor-locked tipping rolls ~±0.1 m and is
-// harmless (flat floor is translation-invariant); riding trips this within 0.3 m
 #define AGR_CAL_ABORT_NET_M 0.3f
 
 typedef struct {
@@ -53,8 +50,6 @@ typedef enum {
 } AgrCalMode;
 
 typedef struct {
-    // rx ring: written by the CAN callback, drained by agr_update (single
-    // writer / single reader; torn reads benign as in v1)
     volatile AgrRawSample rx[AGR_RX_RING];
     volatile uint8_t rx_head;
     uint8_t rx_tail;
@@ -63,11 +58,11 @@ typedef struct {
     uint32_t can_loss_count;
 
     bool sim_active;
-    float sim_grade;  // tan units
+    float sim_grade_tan;
     uint8_t sim_phase;
 
     AgrPitchRing pitch_ring;
-    AgrGeometry geo;  // radians/meters, derived from config + trim each configure
+    AgrGeometry geo;
     AgrTuning tuning;
     AgrProfile profile;
     AgrTrust trust;
@@ -76,45 +71,46 @@ typedef struct {
 
     float trim_deg;
     float lag_ticks;
-    uint32_t timeout_ticks;  // range-stream silence budget, from agr_stale_ms
-    float sys_to_main;  // SYSTEM_TICK_RATE_HZ ticks → main-loop ticks
+    uint32_t timeout_ticks;
+    float sys_to_main;
     float last_distance;
     bool have_distance;
 
-    // calibration session state
     AgrCalMode cal_mode;
-    float cal_net_m;         // net signed travel since sweep arm
-    bool cal_sweep_applied;  // true once a sweep has been applied this boot
+    float cal_net_m;
+    bool cal_sweep_applied;
     AgrCalSweep cal_sweep;
     AgrTauScan cal_tau;
     AgrCalResult cal_result;
     uint32_t cal_tau_ticks;
 
-    // telemetry mirrors (floats for rt_data)
-    float g_cmd;         // fitted grade, deg
-    float fade;          // == trust.fade
-    float gates_f;       // bitfield: link|sight<<1|fit<<2|policy<<3
-    float fit_residual;  // m
+    float g_cmd_deg;
+    float fade;
+    float gates_f;
+    float fit_residual_m;
     float fit_weight;
     float valid_fraction;
-    float far_chord;  // deg, 0 when inactive
-    float law_raw;    // law output before conditioning, deg
-    float setpoint;   // == cond.setpoint
+    float far_chord_deg;
+    float law_raw_deg;
+    float setpoint;
 
-    // node health mirrors (diagnostics only — never read in control path)
-    float node_status;    // health byte 0 (status bits)
-    float node_gate_pct;  // byte 1
-    float node_sat;       // byte 2
-    float node_temp_c;    // byte 4 minus 64
-    float node_cfg_crc;   // byte 6
+    float node_status;
+    float node_gate_pct;
+    float node_sat;
+    float node_temp_c;
+    float node_cfg_crc;
 } AGR;
 
 void agr_init(AGR *agr);
 void agr_reset(AGR *agr);
 void agr_configure(AGR *agr, const RefloatConfig *config, float frequency);
 void agr_update(
-    AGR *agr, const MotorData *motor, const IMU *imu, const Time *time,
-    const RefloatConfig *config, float dt
+    AGR *agr,
+    const MotorData *motor,
+    const IMU *imu,
+    const Time *time,
+    const RefloatConfig *config,
+    float dt
 );
 void agr_winddown(AGR *agr);
 bool agr_handle_can_frame(AGR *agr, const uint8_t *data, uint8_t len);

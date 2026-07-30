@@ -997,8 +997,8 @@ static void refloat_thd(void *arg) {
 
             // alert if cells are out of balance or bms connection failed
             if (bms_is_fault(&d->bms, BMSF_CONNECTION) ||
-                (bms_is_fault(&d->bms, BMSF_CELL_BALANCE) && time_elapsed(&d->time, disengage, 5)
-                )) {
+                (bms_is_fault(&d->bms, BMSF_CELL_BALANCE) &&
+                 time_elapsed(&d->time, disengage, 5))) {
                 if (timer_older(&d->time, d->alert_timer, 15)) {
                     timer_refresh(&d->time, &d->alert_timer);
                     beep_alert(d, 4, false);
@@ -2786,7 +2786,7 @@ static void terminal_agr_sim(int argc, const char **argv) {
         return;
     }
     float pct = agr_parse_float(argv[1]);
-    d->agr.sim_grade = tanf(pct * 0.01f);
+    d->agr.sim_grade_tan = tanf(pct * 0.01f);
     d->agr.sim_active = true;
     VESC_IF->printf("AGR sim: virtual ground at %.1f%% grade\n", (double) pct);
 }
@@ -2802,15 +2802,19 @@ static void terminal_agr_cal(int argc, const char **argv) {
         if (a->cal_mode == AGR_CAL_SWEEPING) {
             a->cal_mode = AGR_CAL_IDLE;
             a->cal_result = agr_cal_fit(
-                &a->cal_sweep, d->float_conf.agr_mount_angle * AGR_DEG2RAD, a->geo.wheel_radius
+                &a->cal_sweep, d->float_conf.agr_mount_angle * AGR_DEG2RAD, a->geo.wheel_radius_m
             );
             AgrCalResult *r = &a->cal_result;
             VESC_IF->printf(
                 "sweep fit: h=%.3f f=%.3f offset=%.2fdeg bias=%.3f rms=%.1fmm "
                 "span=%.0fdeg bins=%d\n",
-                (double) r->mount_height, (double) r->mount_fwd,
-                (double) r->mount_offset_deg, (double) r->range_bias, (double) (r->rms_m * 1000.0f),
-                (double) r->span_deg, r->bins_used
+                (double) r->mount_height_m,
+                (double) r->mount_fwd_m,
+                (double) r->mount_offset_deg,
+                (double) r->range_bias_m,
+                (double) (r->rms_m * 1000.0f),
+                (double) r->span_deg,
+                r->bins_used
             );
             if (r->status == AGR_CAL_OK) {
                 a->cal_mode = AGR_CAL_PENDING;
@@ -2863,10 +2867,10 @@ static void terminal_agr_cal(int argc, const char **argv) {
             return;
         }
         if (a->cal_mode == AGR_CAL_PENDING && a->cal_result.status == AGR_CAL_OK) {
-            d->float_conf.agr_mount_height = a->cal_result.mount_height;
-            d->float_conf.agr_mount_fwd = a->cal_result.mount_fwd;
+            d->float_conf.agr_mount_height = a->cal_result.mount_height_m;
+            d->float_conf.agr_mount_fwd = a->cal_result.mount_fwd_m;
             d->float_conf.agr_mount_offset = a->cal_result.mount_offset_deg;
-            d->float_conf.agr_range_bias = a->cal_result.range_bias;
+            d->float_conf.agr_range_bias = a->cal_result.range_bias_m;
             a->trim_deg = 0.0f;
             a->cal_sweep_applied = true;
             a->cal_mode = AGR_CAL_IDLE;
@@ -2896,24 +2900,35 @@ static void terminal_agr_cal(int argc, const char **argv) {
             }
             float pd = -40.0f + ((float) i + 0.5f) * AGR_CAL_BIN_DEG;
             VESC_IF->printf(
-                "%.2f,%.4f,%u\n", (double) pd,
-                (double) (a->cal_sweep.bin[i].sum_r / (float) a->cal_sweep.bin[i].n),
+                "%.2f,%.4f,%u\n",
+                (double) pd,
+                (double) (a->cal_sweep.bin[i].sum_r_m / (float) a->cal_sweep.bin[i].n),
                 (unsigned int) a->cal_sweep.bin[i].n
             );
         }
     } else if (str_eq(argv[1], "status")) {
         VESC_IF->printf(
             "mode=%d gates=%d dir=%c fade=%.2f g_cmd=%.2f resid=%.1fmm valid=%.0f%% trim=%.2f\n",
-            (int) a->cal_mode, (int) a->gates_f, a->trust.dir_forward ? 'F' : 'R',
-            (double) a->fade, (double) a->g_cmd, (double) (a->fit_residual * 1000.0f),
-            (double) (a->valid_fraction * 100.0f), (double) a->trim_deg
+            (int) a->cal_mode,
+            (int) a->gates_f,
+            a->trust.dir_forward ? 'F' : 'R',
+            (double) a->fade,
+            (double) a->g_cmd_deg,
+            (double) (a->fit_residual_m * 1000.0f),
+            (double) (a->valid_fraction * 100.0f),
+            (double) a->trim_deg
         );
         VESC_IF->printf(
             "law: str=%.2f/%.2f lim=%.1f/%.1f taper=%.0f rl=%.1f raw=%.2f ema=%.2f sp=%.2f\n",
-            (double) a->tuning.strength_up, (double) a->tuning.strength_down,
-            (double) a->tuning.angle_limit_up, (double) a->tuning.angle_limit_down,
-            (double) a->tuning.taper_erpm, (double) a->tuning.rate_limit,
-            (double) a->law_raw, (double) a->cond.ema.value, (double) a->cond.setpoint
+            (double) a->tuning.strength_up,
+            (double) a->tuning.strength_down,
+            (double) a->tuning.angle_limit_up_deg,
+            (double) a->tuning.angle_limit_down_deg,
+            (double) a->tuning.taper_erpm,
+            (double) a->tuning.rate_limit_deg_s,
+            (double) a->law_raw_deg,
+            (double) a->cond.ema.value,
+            (double) a->cond.setpoint
         );
     } else {
         VESC_IF->printf("Usage: agr_cal <sweep|tau|apply|dump|status>\n");
@@ -2962,7 +2977,10 @@ INIT_FUN(lib_info *info) {
     VESC_IF->set_app_data_handler(on_command_received);
     VESC_IF->can_set_sid_cb(can_sid_callback);
     VESC_IF->terminal_register_command_callback(
-        "agr_sim", "Simulate AGR sensor frames (bench tool)", "[angle_deg quality]|[off]", terminal_agr_sim
+        "agr_sim",
+        "Simulate AGR sensor frames (bench tool)",
+        "[angle_deg quality]|[off]",
+        terminal_agr_sim
     );
     VESC_IF->terminal_register_command_callback(
         "agr_cal", "Calibrate AGR mount offset on flat ground", NULL, terminal_agr_cal

@@ -5,20 +5,28 @@
 
 static AgrTuning tun(void) {
     AgrTuning c = {
-        .strength_up = 0.3f, .strength_down = 0.2f,
-        .angle_limit_up = 8.0f, .angle_limit_down = 4.0f,
+        .strength_up = 0.3f,
+        .strength_down = 0.2f,
+        .angle_limit_up_deg = 8.0f,
+        .angle_limit_down_deg = 4.0f,
         .taper_erpm = 0.0f,
-        .sight_on = 0.5f, .sight_off = 0.3f, .residual_max = 0.03f,
-        .fade_rate = 2.0f, .reverse_fade_m = 1.0f, .dir_flip_m = 0.6f,
+        .sight_on = 0.5f,
+        .sight_off = 0.3f,
+        .residual_max_m = 0.03f,
+        .fade_rate_per_s = 2.0f,
+        .reverse_fade_m = 1.0f,
+        .dir_flip_m = 0.6f,
         .rearm_m = 0.15f,
-        .rate_limit = 15.0f,
+        .rate_limit_deg_s = 15.0f,
     };
     return c;
 }
 
 int main(void) {
     AgrTuning cfg = tun();
-    AgrFit good = {.valid = true, .slope = 0.20f, .residual = 0.005f, .weight = 20.0f, .span = 2.0f};
+    AgrFit good = {
+        .valid = true, .slope = 0.20f, .residual = 0.005f, .weight = 20.0f, .span = 2.0f
+    };
     float dt = 0.002f;
 
     // sight hysteresis
@@ -159,7 +167,7 @@ int main(void) {
     for (int i = 0; i < 20; i++) {  // 0.20 m forward: past cfg.rearm_m (0.15) with float margin
         agr_trust_update(&t, &good, false, 0.01f, &cfg, dt);
     }
-    CHECK(t.dir_forward);             // re-armed on forward evidence alone
+    CHECK(t.dir_forward);  // re-armed on forward evidence alone
     CHECK(t.rev_m > cfg.dir_flip_m);  // ...while rev_m (~0.70 m) is still above dir_flip_m
     CHECK(t.policy_ok);
 
@@ -257,7 +265,7 @@ int main(void) {
     agr_cond_init(&cond);
     agr_cond_configure(&cond, 10.0f, 500.0f);
     agr_cond_update(&cond, 100.0f, 1.0f, &cfg, dt);
-    CHECK(cond.setpoint <= cfg.rate_limit * dt + 1e-5f);  // rate limit caps the step
+    CHECK(cond.setpoint <= cfg.rate_limit_deg_s * dt + 1e-5f);  // rate limit caps the step
 
     // engage reset clears state but preserves the configured filter
     agr_cond_init(&cond);
@@ -303,7 +311,7 @@ int main(void) {
     for (int i = 0; i < 250; i++) {
         agr_trust_update(&t, &good, true, 0.01f, &cfg, dt);
         CHECK(t.fade <= prev_fade + 1e-6f);  // never increases
-        CHECK(t.fade >= 0.0f);               // never negative
+        CHECK(t.fade >= 0.0f);  // never negative
         prev_fade = t.fade;
     }
     CHECK_NEAR(t.fade, 0.0f, 1e-3f);  // reaches 0 in ~0.5 s
